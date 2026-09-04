@@ -35,7 +35,7 @@ const envSchema = z.object({
   GITHUB_CLIENT_SECRET: z
     .string()
     .min(1, { message: "GITHUB_CLIENT_SECRET is required." }),
-  OPENAI_API_KEY: z
+  FEATHERLESS_API_KEY: z
     .string()
     .min(1, { message: "OPENAI_API_KEY is required." })
     .optional(),

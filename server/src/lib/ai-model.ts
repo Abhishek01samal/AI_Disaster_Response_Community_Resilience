@@ -19,7 +19,7 @@ export function openaiModelConfig({
     model: ENV.AI_MODEL || "Qwen/Qwen2.5-7B-Instruct",
     maxTokens,
     temperature,
-    apiKey: ENV.OPENAI_API_KEY,
+    apiKey: ENV.FEATHERLESS_API_KEY,
     baseUrl: "https://api.featherless.ai/v1",
   };
 }
