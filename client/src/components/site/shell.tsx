@@ -139,6 +139,9 @@ export function Ticker({ items }: { items: string[] }) {
 }
 
 export function Footer() {
+  const { snapshot, live } = useSituation();
+  const age = snapshot.freshnessSec ?? 0;
+  const cacheLabel = `CACHE — LAST KNOWN ${String(Math.floor(age / 60)).padStart(2, "0")}:${String(age % 60).padStart(2, "0")}`;
   return (
     <footer className="mt-24 border-t border-border-strong bg-foreground text-background">
       <div className="mx-auto grid max-w-[1600px] gap-10 px-4 py-14 md:grid-cols-4 md:px-8">
@@ -166,10 +169,14 @@ export function Footer() {
         <div>
           <p className="font-mono text-[10px] tracking-[0.18em] uppercase opacity-60">Status</p>
           <ul className="mt-4 space-y-1 font-mono text-xs opacity-80">
-            <li>MAP TILES — OK</li>
-            <li>ALERT FEED — OK</li>
+            <li>MAP TILES — {live ? "OK" : "DEGRADED"}</li>
+            <li>ALERT FEED — {snapshot.alerts.length ? "OK" : "STALE"}</li>
             <li>AMBULANCE — SIMULATOR</li>
-            <li>AGENTS — READY</li>
+            <li>AGENTS — {live ? "LIVE" : "READY"}</li>
+            <li>{cacheLabel}</li>
+            <li>
+              RISK {snapshot.riskIndex} · RIVER {snapshot.riverM.toFixed(2)} M
+            </li>
           </ul>
         </div>
       </div>

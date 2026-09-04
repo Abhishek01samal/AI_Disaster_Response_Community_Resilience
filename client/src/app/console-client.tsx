@@ -4,12 +4,9 @@ import { useState } from "react";
 import { toast, Toaster } from "sonner";
 import { Page, Section, Tag } from "@/components/site/shell";
 import type { AuthUser } from "@/lib/auth";
-import { bounce } from "@/lib/mock-data";
 import { confirmMatchAction, submitReportAction, submitSosAction } from "@/lib/ops";
 import { SituationProvider, useSituation } from "@/lib/situation-context";
 import { refreshDerived } from "@/lib/snapshot";
-
-const NADIPUR = { lat: 22.5726, lng: 88.3639 };
 
 const SOS_TYPES = [
   { id: "TRAPPED", label: "Trapped" },
@@ -21,18 +18,12 @@ const SOS_TYPES = [
 ] as const;
 
 const LAYERS = ["Hazard", "Routes", "Shelters", "SOS", "Ambulance", "Reports"];
-const timeline = [
-  { t: "T-18h", k: "Pre-warning", d: "Rainfall forecast crosses threshold. Preparedness checklist pushed to district." },
-  { t: "T-06h", k: "Early action", d: "Shelters opened, camp registry activated, volunteer roster confirmed." },
-  { t: "T-00h", k: "Impact", d: "River crosses danger mark. Emergency mode enabled for four sectors." },
-  { t: "T+04h", k: "Response", d: "SOS triage, ambulance simulation, safe-location ranking live." },
-  { t: "T+3d", k: "Recovery", d: "Damage reporting, resource matching, camp wind-down workflow." },
-];
 
-function Bars() {
+function Bars({ series }: { series: number[] }) {
+  const data = series.length ? series : [8];
   return (
     <div className="flex h-24 items-end gap-[2px]">
-      {bounce.map((v, i) => (
+      {data.map((v, i) => (
         <span
           key={i}
           className="w-full bg-foreground/80"
@@ -83,15 +74,16 @@ export default function ConsoleClient({ user }: { user: AuthUser | null }) {
 }
 
 function ConsoleApp({ user }: { user: AuthUser | null }) {
-  const { snapshot, setSnapshot, runPrompt } = useSituation();
+  const { snapshot, setSnapshot, runPrompt, live } = useSituation();
   const incidents = snapshot.incidents;
   const camps = snapshot.camps;
   const safePlaces = snapshot.safePlaces;
   const metrics = snapshot.metrics;
   const matches = snapshot.matches;
+  const timeline = snapshot.timeline;
 
   const [activeLayers, setActiveLayers] = useState<string[]>(["Hazard", "Shelters", "SOS"]);
-  const [sel, setSel] = useState(incidents[0]!.id);
+  const [sel, setSel] = useState(incidents[0]?.id ?? "");
   const selected = incidents.find((i) => i.id === sel) ?? incidents[0]!;
   const [emergencyMode, setEmergencyMode] = useState(false);
   const [sosOpen, setSosOpen] = useState(false);
@@ -104,7 +96,8 @@ function ConsoleApp({ user }: { user: AuthUser | null }) {
   const [confirmBusy, setConfirmBusy] = useState<string | null>(null);
   const [reportText, setReportText] = useState("");
   const [reportBusy, setReportBusy] = useState(false);
-  const [phase, setPhase] = useState(timeline[2]!.t);
+  const activePhase = timeline.find((p) => p.active)?.t ?? timeline[2]?.t ?? "T-00h";
+  const [phase, setPhase] = useState(activePhase);
 
   const queue = snapshot.queue;
   const feed = snapshot.alerts;
@@ -120,11 +113,11 @@ function ConsoleApp({ user }: { user: AuthUser | null }) {
   }
 
   async function locate(): Promise<{ lat: number; lng: number }> {
-    if (!navigator.geolocation) return NADIPUR;
+    if (!navigator.geolocation) return { lat: snapshot.mapLat, lng: snapshot.mapLng };
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
         (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => resolve(NADIPUR),
+        () => resolve({ lat: snapshot.mapLat, lng: snapshot.mapLng }),
         { enableHighAccuracy: true, timeout: 4000 }
       );
     });
@@ -133,7 +126,7 @@ function ConsoleApp({ user }: { user: AuthUser | null }) {
   async function sendSos() {
     setSosBusy(true);
     try {
-      const loc = consent ? await locate() : NADIPUR;
+      const loc = consent ? await locate() : { lat: snapshot.mapLat, lng: snapshot.mapLng };
       const result = await submitSosAction({
         emergencyType: sosType,
         peopleAffected: people,
@@ -244,8 +237,11 @@ function ConsoleApp({ user }: { user: AuthUser | null }) {
         <section className="border-b border-border-strong">
           <div className="mx-auto max-w-[1600px] px-4 pt-10 pb-0 md:px-8">
             <div className="flex flex-wrap items-baseline justify-between gap-4">
-              <span className="label-mono">Operating layer · not a chatbot</span>
-              <span className="label-mono">Scenario: {snapshot.scenario}</span>
+              <span className="label-mono">Operating layer · live agents</span>
+              <span className="label-mono">
+                Scenario: {snapshot.scenario}
+                {live ? " · LIVE" : ""}
+              </span>
             </div>
             <h1 className="display-tight mt-6 text-[16vw] leading-[0.82] md:text-[11.5vw]">
               R<span className="text-[0.62em]">es</span>Q
@@ -300,7 +296,7 @@ function ConsoleApp({ user }: { user: AuthUser | null }) {
                 <span className="font-mono text-xs">{snapshot.reportsToday}</span>
               </div>
               <div className="mt-6">
-                <Bars />
+                <Bars series={snapshot.reportInflow} />
               </div>
               <div className="mt-2 flex justify-between font-mono text-[10px] text-muted-foreground">
                 <span>00:00</span>
@@ -593,7 +589,7 @@ function ConsoleApp({ user }: { user: AuthUser | null }) {
                 <span className="font-mono text-[10px]">500 M</span>
               </div>
               <div className="absolute top-3 right-3 font-mono text-[10px] text-muted-foreground">
-                22.5726 N / 88.3639 E
+                {snapshot.mapLat.toFixed(4)} N / {snapshot.mapLng.toFixed(4)} E
               </div>
             </div>
           </div>
@@ -941,18 +937,21 @@ function ConsoleApp({ user }: { user: AuthUser | null }) {
         </div>
       </Section>
 
-      <Section index="10" title="Preparedness to recovery" note="One continuous timeline">
+      <Section index="10" title="Preparedness to recovery" note="Computed from live risk / gauge">
         <ol className="grid gap-px bg-border md:grid-cols-5">
           {timeline.map((s) => (
             <li
               key={s.t}
-              className={`panel p-5 cursor-pointer ${phase === s.t ? "ring-1 ring-foreground" : ""}`}
+              className={`panel p-5 cursor-pointer ${phase === s.t || s.active ? "ring-1 ring-foreground" : ""}`}
               onClick={() => {
                 setPhase(s.t);
                 toast.message(s.k, { description: s.d });
               }}
             >
-              <span className="font-mono text-xs">{s.t}</span>
+              <span className="font-mono text-xs">
+                {s.t}
+                {s.active ? " · NOW" : ""}
+              </span>
               <h3 className="display-tight mt-3 text-lg">{s.k}</h3>
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{s.d}</p>
             </li>
