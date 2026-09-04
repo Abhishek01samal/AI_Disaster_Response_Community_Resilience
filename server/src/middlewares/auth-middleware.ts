@@ -3,7 +3,6 @@ import { ForbiddenError, UnauthorizedError } from "../utils/api-error.js";
 import type { IPayload } from "../types/jwt.types.js";
 import { ENV } from "../lib/env.js";
 import { redisClient } from "../lib/redis.js";
-import { Role } from "@prisma/client";
 
 const authMiddleware = async (req: any, res: any, next: any) => {
   try {
@@ -50,7 +49,7 @@ const generateRefreshToken = (userData: IPayload) => {
 
 const authorizeAdmin = async (req: any, res: any, next: any) => {
   try {
-    if (req?.user?.role !== Role.Admin) {
+    if (req?.user?.role !== "Admin") {
       throw new ForbiddenError("Forbidden Request");
     }
     next();

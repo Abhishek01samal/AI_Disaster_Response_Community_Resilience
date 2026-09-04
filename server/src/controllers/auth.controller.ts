@@ -45,7 +45,7 @@ const registerUser = AsyncHandler(async (req: any, res: any) => {
   const hashedPassword = await hashPassword(password);
 
   // create user and local oauth provider in one transaction
-  const user = await prisma.$transaction(async (tx) => {
+  const user = await prisma.$transaction(async (tx: any) => {
     const createdUser = await tx.user.create({
       data: {
         name,

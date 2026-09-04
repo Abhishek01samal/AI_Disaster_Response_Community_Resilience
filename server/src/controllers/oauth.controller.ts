@@ -87,7 +87,7 @@ export const getGoogleLoginCallback = AsyncHandler(
           where: { id: oauthAccount.userId },
         });
       } else {
-        user = await prisma.$transaction(async (tx) => {
+        user = await prisma.$transaction(async (tx: any) => {
           // 2 Check if email already exists
           let existingUser = await tx.user.findUnique({
             where: { email },
@@ -263,7 +263,7 @@ export const getGithubLoginCallback = AsyncHandler(
           where: { id: oauthAccount.userId },
         });
       } else {
-        user = await prisma.$transaction(async (tx) => {
+        user = await prisma.$transaction(async (tx: any) => {
           let existingUser = await tx.user.findUnique({
             where: { email },
           });
