@@ -1,201 +1,121 @@
-# ResQ — AI-Powered Flood Intelligence & Emergency Response System
+# ResQ — Disaster Response Operating Layer
 
-ResQ is an AI-assisted flood intelligence pipeline built for Hyderabad disaster response. It converts rainfall data into ward-level risk scores, time-to-critical estimates, impact analysis, and concrete emergency actions — moving teams from reactive flood management to proactive decision-making.
+> The safest useful action, visible within seconds of a disaster signal.
 
-Built for a hackathon demo, scoped to 3–5 verified Hyderabad wards rather than city-wide hydraulic simulation.
+ResQ is a **map-first operating layer** — not a chatbot — that unifies early warning, risk intelligence, safe-action guidance, emergency response, and relief coordination into one continuously updated console. Every record carries a source, timestamp, and confidence level, and safety-critical decisions stay deterministic and human-reviewed.
 
----
+## Core Principles
 
-## Core Idea
+- **Action over information** — every alert answers "what should I do now, here."
+- **Time is first-class** — timestamps, freshness, and stale-data warnings on all changing records.
+- **Source transparency** — Official, Verified, Community, and AI Signal states never blur together.
+- **AI with boundaries** — AI handles classification, clustering, and matching only. It never issues autonomous evacuation orders, dispatches, or certifies structural safety.
 
-ResQ answers four questions in sequence:
+## Product Surfaces
 
-1. **Where** is flood risk increasing?
-2. **When** could a ward become critical?
-3. **Who/what** could be affected?
-4. **What action** should responders take?
-
----
-
-## Pipeline
-
-```
-Rainfall Data
-     |
-     v
-Stage 1 — Risk Agent (deterministic)
-     |
-     v
-Risk Score + Category
-     |
-     v
-Stage 2 — Timing Agent (deterministic)
-     |
-     v
-Time-to-Critical + Trend
-     |
-     v
-Stage 3 — Impact Agent (deterministic)
-     |
-     v
-Population + Hospitals + Roads + Schools
-     |
-     v
-Stage 4 — Action Agent (LLM)
-     |
-     v
-Recommended Emergency Actions
-     |
-     v
-Dashboard + Live Reasoning Trace
-```
-
-| Question | Stage | Output |
-|---|---|---|
-| Where? | Risk Agent | Risk score (0–1) + category |
-| When? | Timing Agent | ETA-to-critical (mins) + trend |
-| Who/What? | Impact Agent | Population, hospitals, roads, schools |
-| What action? | Action Agent | Fixed-vocabulary actions + summary sentence |
-
-Only **Stage 4** uses an LLM. Stages 1–3 are deterministic and reproducible by design — same input always produces the same output — which keeps the system explainable and demo-safe.
-
----
-
-## Core Features
-
-- **Deterministic risk scoring** — rainfall rate, relative elevation, GHMC hotspot proximity/severity → normalized 0–1 score
-- **Time-to-critical estimation** — trend extrapolation over historical risk readings
-- **Impact analysis** — locally cached OSM data for population, hospitals, major roads, schools
-- **AI-powered action planning** — single structured LLM call producing a fixed action vocabulary (dispatch team, close road, open shelter, issue alert) plus a human-readable summary
-- **Live reasoning trace** — dashboard shows each pipeline stage as it executes, not just the final answer
-- **Historical event replay** — feeds a real historical Hyderabad rainfall event through the same pipeline, for validation
-- **Local-first demo** — all external data cached beforehand; no dependency on venue Wi-Fi or live APIs
-
----
-
-## Tech Stack
-
-**Backend:** Python, FastAPI, SQLite/JSON, Pydantic, Anthropic API (Stage 4 only), `rasterio` / `elevation`, `osmnx`
-
-**Frontend:** Next.js (App Router), Tailwind CSS v4, Leaflet.js + OSM tiles, Radix UI, REST polling
-
-**Explicitly excluded:** LangChain, LangGraph, CrewAI, AutoGen, Docker, Kubernetes, microservices
-
----
-
-## Project Structure
-
-```
-ResQ/
-├── backend/
-│   ├── app/
-│   │   ├── api/routes/          # rainfall, wards, replay, pipeline
-│   │   ├── agents/              # risk, timing, impact, action agents
-│   │   ├── pipeline/            # orchestrator, models, validators
-│   │   ├── data/                # rainfall, elevation, hotspots, osm, historical
-│   │   ├── services/
-│   │   └── storage/
-│   └── tests/
-├── frontend/
-│   └── src/
-│       ├── app/                 # Next.js pages
-│       ├── components/site/     # shell, chat, motion
-│       └── lib/                 # mock data, utils
-├── data/                        # wards, hotspots, elevation, osm, historical
-├── docs/                        # architecture, demo-script, data-sources
-└── README.md
-```
-
----
-
-## Setup
-
-### Prerequisites
-Python 3.x, Node.js, npm, Git
-
-### Backend
-```bash
-cd backend
-python -m venv venv
-source venv/bin/activate      # Windows: venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-```
-
-Create `backend/.env`:
-```env
-ANTHROPIC_API_KEY=<your-api-key>
-RAINFALL_API_URL=<rainfall-api-url>
-```
-
-Run:
-```bash
-uvicorn app.main:app --reload --port 8000
-```
-Available at `http://localhost:8000`
-
-### Frontend
-```bash
-cd frontend
-npm install
-npm run dev
-```
-Available at `http://localhost:3000`
-
-> Before a live demo, pre-cache: ward boundaries, SRTM elevation data, GHMC hotspot data, and OSM infrastructure data.
-
----
-
-## Scope & Non-Goals
-
-ResQ does **not** attempt to:
-- Physically model drainage networks, nala capacity, or fluid dynamics
-- Solve civil infrastructure planning
-- Provide city-wide coverage (limited to 3–5 wards)
-- Support multi-user auth or production persistence
-- Use multi-agent negotiation/orchestration frameworks
-
----
-
-## Success Criteria
-
-1. End-to-end pipeline (Rainfall → Risk → Timing → Impact → Action) runs for ≥1 ward without manual intervention
-2. A real historical Hyderabad flood event replays and produces a valid result for a ward that actually flooded
-3. Every pipeline stage is visible in the dashboard
-4. Output actions are concrete and specific
-5. Full demo runs locally, no network dependency
-6. Clear distinction between real data, cached data, deterministic output, and LLM-generated output
-
----
-
-## Risks & Mitigations
-
-| Risk | Mitigation |
+| Surface | Purpose |
 |---|---|
-| Overpass API unavailable | Cache all OSM data pre-demo |
-| LLM response slow/malformed | Keep prompt minimal; validate structured output |
-| Venue Wi-Fi fails | Run fully local with cached data |
-| Timing estimate oscillates | Smooth/constrain trend calculation |
-| Scope creep | Hard cap at 3–5 wards |
+| **Console** | Live metrics: active incidents, open SOS, shelter capacity, response times |
+| **Incident Map** | Hazard zones, routes, shelters, SOS pins on a live map |
+| **Relief** | Camp registry, needs/offers, AI-assisted resource matching |
+| **Situation** | Chronological official + community + AI feed with trust labels |
+
+Information states shown throughout: **OFFICIAL → VERIFIED → COMMUNITY → AI SIGNAL → STALE**
 
 ---
 
-## Design Principles
+## Multi-Agent Architecture
 
-| Principle | Description |
+Five specialized decision-support workers sit behind the console. They never act autonomously — every output flows through a deterministic safety core (rules engine, PostGIS, RBAC, human approval) before becoming an action.
+
+```
+                    MASTER AGENT (Orchestrator)
+                            │
+        ┌───────────┬───────────┬────────────┐
+        ▼           ▼           ▼            ▼
+     RISK        ROUTE      RESOURCE     RESPONSE
+        └───────────┴───────────┴────────────┘
+                            │
+                 DETERMINISTIC SAFETY CORE
+              (Rules + PostGIS + RBAC + Human review)
+                            │
+                        ResQ Console
+```
+
+### 1. Master / Orchestrator Agent
+Receives every event (alerts, reports, SOS, resource changes), decides which specialist agents to invoke, and merges their outputs into one coherent incident context. Never issues instructions like "evacuate now" — it composes verified guidance for human/authority approval.
+
+### 2. Risk Intelligence Agent
+Answers *"what's happening, where, how bad?"* Performs incident classification, report clustering (e.g., 38 reports → one flood cluster), duplicate detection, priority scoring, and anomaly detection. All outputs are confidence-scored signals awaiting verification, not confirmed facts.
+
+### 3. Safe Route & Location Agent
+Answers *"where should people go, and how?"* Ranks shelters using a transparent `SafetyScore` (hazard exposure, capacity, accessibility, distance) and evaluates route risk (hazard crossings, closures). Actual geospatial math (nearest-neighbor, point-in-polygon, intersections) runs in **PostGIS**, not in the LLM.
+
+### 4. Resource & Relief Agent
+Answers *"what's needed, and where's it available?"* Monitors camp capacity, extracts structured needs/offers from free text, and proposes need↔offer matches with a confidence score — always pending human confirmation before allocation.
+
+### 5. Emergency Response Agent
+Answers *"who needs help right now?"* Handles SOS intake, triage-priority suggestions, the responder queue, and a clearly labeled **ambulance simulator** (no real dispatch integration assumed for the hackathon build).
+
+**Agent-to-agent communication** uses structured JSON events (e.g., `RISK_UPDATE`, `SAFE_LOCATION_RESULT`, `RESOURCE_ALERT`, `RESPONSE_UPDATE`) rather than free-form chat.
+
+---
+
+## User Data Model (Data-Minimization Approach)
+
+Data is collected in layers — only what each workflow actually needs:
+
+| Stage | Data Collected |
 |---|---|
-| Reliability over complexity | Every feature judged by whether it improves the demo |
-| Explainability over black-box | Stages 1–3 fully understandable from inputs/formulas |
-| Determinism where possible | Risk, timing, impact are reproducible |
-| AI where it adds value | LLM used only for final reasoning/communication |
-| Local-first demo | Critical functionality works offline |
-| Small, defensible scope | Fewer wards, real verifiable data preferred |
+| **Registration** | Name, contact, role, language preference, emergency contacts, basic household size |
+| **Optional profile** | Accessibility needs, mobility assistance, medical-assistance flag (sensitive — consent-gated) |
+| **On SOS activation** | Live location (consent-scoped, revocable), emergency type, people affected, trapped/medical flags |
+| **Community reporting** | Report text, location, optional media, timestamp |
+
+Precise location is reserved for active emergency workflows; public map layers only ever show coarse location.
 
 ---
 
-## License
+## Database Schema (Prisma / PostgreSQL)
 
-MIT License — see `LICENSE` file for details.
+Extends the existing auth schema (`User`, `OAuthProvider`) with:
+
+- **User context**: `EmergencyContact`, `UserLocation`, `UserAssistanceProfile`, `UserConsent`
+- **Geo & hazard**: `Location`, `Building`, `HazardZone`, `Incident`, `Alert`
+- **Relief**: `Shelter`, `Resource`, `ReliefNeed`, `ResourceOffer`, `ResourceMatch`, `Donation`
+- **Response**: `SOSRequest`, `Ambulance`, `AmbulanceAssignment`
+- **Trust/reporting**: `CommunityReport` (with `SourceState` + `VerificationStatus` enums)
+- **Agent orchestration**: `AgentWorkflow`, `AgentExecution`, `EvaluationResult`, `AuditEvent`
+
+The agent tables (`AgentWorkflow` → `AgentExecution`) are intentionally generic so each agent (Data Refinement, Validation, Master, Risk, Route, Resource, Response, Evaluation) can log its own input/output/confidence independently, allowing teams to build agents in parallel against shared JSON contracts.
+
+`Json` fields stand in for PostGIS geometry types for now; production geospatial operations (point-in-polygon, nearest-shelter, spatial clustering) are a planned follow-up on top of PostGIS.
 
 ---
 
-> **In one line:** Turn rainfall into actionable emergency intelligence before flooding becomes visible — deterministic where possible, AI only where it adds value.
+## Recommended Build Order
+
+```
+Prisma Schema → Repository Layer → Service Layer → Agent Logic → Orchestration (Inngest) → UI
+```
+
+A single TypeScript backend (not microservices) is recommended for the hackathon scope, organized as:
+
+```
+backend/
+├── agents/        (master, risk, route, resource, response)
+├── safety/        (rules, validation, human-approval, confidence)
+├── geospatial/     (postgis, hazards, routes, locations)
+├── realtime/       (socket.ts)
+└── database/
+```
+
+---
+
+## Design Boundary (Stated, Not Hidden)
+
+- No autonomous evacuation orders — guidance only, always source-approved.
+- No structural safety certification — building suitability is a ranked factor list, not an inspection.
+- No autonomous dispatch — ambulance coordination is a labeled simulator.
+
+> Decision support — not a replacement for emergency authorities.
