@@ -1,161 +1,132 @@
 # ResQ — Flash Flood Early Warning & Response System
 
 A rainfall-intensity-driven flood prediction and response platform for Hyderabad's
-Uppal / LB Nagar / Nagole corridor, built with **Next.js 14** (App Router) and
-deterministic hydrological logic.
+Uppal / LB Nagar / Nagole corridor. Built with deterministic hydrological logic
+and a coordinated multi-agent AI pipeline — not an agent framework.
 
 ---
 
 ## Overview
 
-**ResQ** is a hackathon-built decision-support platform addressing a specific,
-well-documented gap in disaster response: official flood alerts report total
-rainfall over 24 hours, which conceals the actual danger. Drainage infrastructure
-in Hyderabad's eastern corridor typically handles only 12-20mm of rainfall per hour.
-A 60mm downpour spread across 12 hours is manageable; the same 60mm falling in 45
-minutes overwhelms the system almost immediately. No current public system
-distinguishes between these two scenarios.
+**ResQ** addresses a critical gap in disaster response: official flood alerts report
+total rainfall over 24 hours, which conceals the actual danger. Drainage
+infrastructure in Hyderabad's eastern corridor typically handles only 12-20mm of
+rainfall per hour. A 60mm downpour spread across 12 hours is manageable; the same
+60mm falling in 45 minutes overwhelms the system almost immediately. No current
+public system distinguishes between these two scenarios.
 
 The corridor — Uppal, LB Nagar, and Nagole — also has the fastest-growing
-flood-risk footprint in the city, as former agricultural catchment has converted to
-concrete faster than drainage capacity has kept pace. Historically, this land
-drained through a network of interconnected lakes following natural contours;
-urban construction severed these connections, so water still follows old paths but
-now meets blocked or narrowed drains instead of open cascades. This means flooding
-in one sub-zone is frequently a downstream consequence of an upstream basin
-filling, not an isolated local event.
+flood-risk footprint in the city, expanding from roughly 38 km² to over 60 km² as
+agricultural catchment converts to concrete. Historically this area drained through
+a network of interconnected lakes (cheruvus) following natural contours. Urban
+construction severed these connections, so water still follows old paths but now
+meets blocked or narrowed drains instead of open cascades — meaning flooding in one
+sub-zone is frequently a downstream consequence of an upstream basin filling, not
+an isolated local event.
 
-ResQ addresses this gap with a Next.js-based decision support system:
+A secondary but equally critical failure: flooding itself is rarely the direct
+cause of injury or death — submerged open manholes, exposed live wiring, and
+unverified rumors causing bad decisions are. Any usable system must account for
+hazard points and evidence quality, not just water presence.
 
-- Structured, real-time-style hazard prediction using rainfall rate against known
-  drain capacity thresholds
-- Basin-cascade modeling so downstream risk can be anticipated before local
-  rainfall alone would indicate it
-- Explainable shelter ranking instead of an opaque score
-- An evidence-state system that distinguishes verified, unverified, and
-  AI-flagged reports rather than treating all information as equally trustworthy
-- Hazard-aware routing that avoids secondary dangers like open manholes and live
-  wiring, not just standing water
+ResQ addresses these gaps with four deterministic functional agents operating as a
+pipeline — not a generic AI system.
 
 ---
 
-## Key Features
+## Architecture
 
-### Rainfall-Rate Breach Prediction
+The system coordinates four plain functions in a fixed sequence. No agent framework
+(LangChain, CrewAI, etc.) is used. Each function has known, fixed inputs and
+outputs — this determinism ensures the demo never depends on a live call succeeding.
 
-- Deterministic comparison of live rainfall rate against fixed drain capacity
-- Predicts which sub-zone breaches first and an estimated time-to-overflow
-- No LLM involved — pure hydraulic threshold logic
+| Agent | Input | Logic | Output |
+|---|---|---|---|
+| **Classifier** | Free-text report typed by presenter | Single call to Featherless AI, prompted to return strict JSON `{hazard_type: string, confidence: number}` | Hazard type + confidence, or hardcoded fallback if API fails |
+| **Risk** | Rainfall rate (mm/hr) entered manually | Compare rate against fixed drain capacity threshold (12-20mm/hr); if exceeded, determine which sub-zone(s) breach and estimated time-to-overflow. Additionally check basin-cascade state: if an upstream basin is flagged near capacity in seed data, elevate the downstream sub-zone's risk level independent of local rainfall input | Per-sub-zone result: breach true/false, estimated time, risk level |
+| **Verifier** | Incoming report + existing report set | Rule-based evaluation: if multiple reports reference the same sub-zone within a similar time window, increase confidence; if a report conflicts with an official-tagged alert, flag as disputed | Final evidence-state tag: OFFICIAL / UNVERIFIED / AI SIGNAL / STALE / DISPUTED |
+| **Router** | User's simulated location, destination shortlist from SafetyScore ranking, hazard point set | Compute a simple waypoint path (2-4 interpolated points) from user to top-ranked shelter, manually adjusted to bend around hazard point coordinates — no real routing API | Ordered list of coordinates for the frontend to animate a marker along |
 
-### Basin-Cascade Risk Modeling
+**Pipeline sequence:** Presenter enters rainfall rate → Risk agent predicts breach →
+Shelters ranked by SafetyScore → Evidence feed shows reports tagged by trust level →
+Presenter types new report → Classifier agent calls AI live → hazard type + confidence
+appear → Presenter clicks SOS → Router agent computes path avoiding hazards → animated
+marker moves toward nearest safe shelter.
 
-- Basins tagged with upstream/downstream relationships
-- Downstream sub-zones flagged as elevated risk when an upstream basin nears
-  capacity, independent of local rainfall alone
-
-### Explainable Shelter Ranking
-
-- Shelters scored on distance, capacity, flood exposure, and basin position
-- Every ranking displayed with a human-readable reason, not a black-box score
-
-### Evidence-State Verification
-
-- Every report tagged: OFFICIAL, UNVERIFIED, AI SIGNAL, STALE, or DISPUTED
-- Rule-based verification by default; conflicting or corroborating reports
-  adjust confidence automatically
-
-### Live Hazard Classification
-
-- Free-text ground reports classified live via an AI call during operation
-- Returns structured hazard type and confidence score
-- Hardcoded fallback ensures the system never shows a broken state if the API
-  call fails
-
-### Hazard-Aware Emergency Routing
-
-- SOS flow computes a simulated route to the nearest safe shelter
-- Route avoids known hazard points such as open manholes and exposed wiring
-- Animated marker simulates real-time movement toward safety
-
-### Four-Agent Coordination Pipeline
-
-- Classifier, Risk, Verifier, and Router — four distinct functional responsibilities
-- Implemented as plain, composable functions, not an agent framework
-- Chosen deliberately: fixed, known inputs and outputs do not require the
-  overhead of dynamic tool orchestration
+All seed data is persisted in PostgreSQL via Prisma and loaded into memory on backend
+start for fast reads during the demo.
 
 ---
 
-## Tech Stack
+## Data Model (Prisma / PostgreSQL)
 
-### Frontend — Next.js 14 App Router
+Core tables (flat, shallow schema — no complex relations beyond basin upstream/downstream
+and report-to-subzone linkage):
 
-- **Next.js 14** — App Router, file-based routing, server components, and API routes
-- **Tailwind CSS** — utility-first styling with custom monochrome design system
-- **Leaflet + OpenStreetMap** — interactive map rendering, no API key required
-- **shadcn/ui** — New York-style UI components with 0 border-radius, OKLCH colors
-- **React Query** — server state management and data fetching
-- **TanStack Router** — type-safe routing built on top of React
+| Table | Key Columns |
+|---|---|
+| `SubZone` | id, name, center_coordinates |
+| `Basin` | id, name, center_coordinates, upstream_basin_id (self-relation) |
+| `Shelter` | id, name, coordinates, capacity_percent, distance_from_center |
+| `HazardPoint` | id, name, coordinates, type (manhole/live_wire), label |
+| `Report` | id, text, sub_zone_id, evidence_state (enum: OFFICIAL/UNVERIFIED/AI_SIGNAL/STALE/DISPUTED), created_at |
+| `Threshold` | id, drain_capacity_mm_per_hr (single-row config, fixed 12-20) |
+| `SubZone` | id, name, center_coordinates |
 
-### Backend — Node.js + Express
-
-- **Node.js** — server runtime
-- **Express** — REST API framework for agent functions
-- Four agent functions (Classifier, Risk, Verifier, Router) run in sequence from
-  API routes
-
-### Database & Data Layer
-
-- **PostgreSQL** — relational storage for sub-zones, basins, shelters, hazard
-  points, and reports
-- **Prisma ORM** — type-safe database access and migrations
-- Seed data loaded into memory on backend start for fast reads during operation
-
-### AI
-
-- **Featherless AI API** — called from the backend only, never exposed to the
-  frontend
-- OpenAI SDK-compatible client used for integration
-- Used exclusively by the Classifier agent; Risk logic is deterministic math and
-  Verifier logic is rule-based by default
-
-### Infrastructure & Deployment
-
-- No containerization, no orchestration, no message queues
-- Local-first setup for development and demonstration
-- **Vercel** (frontend) and **Render / Railway** (backend + Postgres) only if a
-  shareable deployment is required
-
-### Repository Structure
-
-- Two separate folders — `frontend/` (Next.js 14 app) and `backend/` (Express API)
-- No monorepo tooling; each folder has its own `package.json` and is installed
-  and run independently
+Seed data is loaded via a single `seed.ts` script run once at setup, not regenerated
+live.
 
 ---
 
-## Setup Instructions
+## Tech Stack (Fixed — Do Not Deviate)
 
-### 1. Clone the Repository
+| Layer | Choice |
+|---|---|
+| Frontend | Next.js 16, Tailwind CSS |
+| Map | Leaflet + OpenStreetMap tiles (no API key required) |
+| Backend | Node.js + Express |
+| Database | PostgreSQL |
+| ORM | Prisma |
+| AI | Featherless AI API (backend only) — OpenAI SDK-compatible client acceptable |
+| Agents | Four plain functions — no agent framework |
+| Risk logic | Deterministic math only, no LLM |
+| Verifier logic | Deterministic rules first, LLM only as optional fallback |
+| Router logic | Simulated waypoint interpolation, no real routing API |
+| Infrastructure | None (no Docker, no Kubernetes, no queues) |
+| Deployment | Local-first. Vercel + Render/Railway only if a shareable link is needed |
+| Repo structure | Two separate folders — **NOT a monorepo** |
 
-```bash
-git clone https://github.com/<org>/resq.git
-cd resq
+---
+
+## Repository Structure
+
+```
+floodpulse/
+├── frontend/          (Next.js 16 app)
+│   ├── app/
+│   ├── components/
+│   ├── public/
+│   └── package.json
+├── backend/            (Express app)
+│   ├── src/
+│   │   ├── agents/     (classifier.ts, risk.ts, verifier.ts, router.ts)
+│   │   ├── routes/
+│   │   ├── seed/       (seed data + seed script)
+│   │   └── index.ts
+│   ├── prisma/
+│   │   └── schema.prisma
+│   └── package.json
+└── README.md
 ```
 
-### 2. Backend Setup
+No shared root `package.json`, no shared build tooling. Each folder is installed and
+run independently.
 
-Create a `.env` file inside `backend/`:
+---
 
-```env
-DATABASE_URL="postgresql://user:password@localhost:5432/resq"
-FEATHERLESS_API_KEY="your_key_here"
-FEATHERLESS_BASE_URL="https://api.featherless.ai/v1"
-PORT=4000
-```
+## Local Setup
 
-Install dependencies and initialize the database:
-
+**Backend**
 ```bash
 cd backend
 npm install
@@ -163,56 +134,83 @@ npx prisma migrate dev --name init
 npm run seed
 npm run dev
 ```
+Runs on `http://localhost:4000`
 
-App running at: `http://localhost:4000`
-
-### 3. Frontend Setup
-
+**Frontend**
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
+Runs on `http://localhost:3000`, calls backend at `http://localhost:4000`
 
-App running at: `http://localhost:3000`, calls backend at `http://localhost:4000`
+---
+
+## Environment Variables (`backend/.env`)
+
+```
+DATABASE_URL="postgresql://user:password@localhost:5432/floodpulse"
+FEATHERLESS_API_KEY="your_key_here"
+FEATHERLESS_BASE_URL="https://api.featherless.ai/v1"
+PORT=4000
+```
 
 ---
 
 ## Core Demo Flow
 
-1. Map loads showing the Uppal / LB Nagar / Nagole corridor with shelters, basins,
-   and hazard points (rendered with Leaflet + OpenStreetMap)
-2. A rainfall rate (mm/hr) is entered via a UI control → the Risk agent (deterministic
-   math) predicts which sub-zone breaches first and an estimated time-to-overflow
-3. Shelters are shown ranked by SafetyScore, with a human-readable reason per shelter
-   (e.g., "1.2km away, dry, not downstream of an at-risk basin")
-4. The evidence feed displays existing ground reports tagged by trust level
-   (OFFICIAL / UNVERIFIED / AI SIGNAL / STALE / DISPUTED)
-5. A new report is typed live → the Classifier agent calls Featherless AI via the
-   backend → hazard type and confidence appear in real time
-6. SOS is triggered → the Router agent computes a simulated waypoint path avoiding
-   hazard points → animated marker moves along the path on the map toward the
-   nearest safe shelter
+1. Map loads showing the corridor with shelters, basins, hazard points
+2. Presenter enters a rainfall rate (mm/hr) → Risk agent predicts which sub-zone
+   breaches first and when
+3. Shelter list shown ranked by SafetyScore, with visible reasoning
+4. Evidence feed shows pre-seeded community reports tagged by trust level
+5. Presenter types a new report live → Classifier agent calls Featherless AI live →
+   hazard type + confidence appear
+6. Presenter clicks SOS → Router agent computes a waypoint path avoiding hazard
+   points → animated marker moves along it
 
 ---
 
-## Future Enhancements
+## Build Order (do not skip ahead)
 
-- Real-time rainfall sensor and IoT data ingestion
-- Integration with official municipal data sources (GHMC, TGSPDCL)
-- Expansion beyond the Uppal / LB Nagar / Nagole corridor to full city coverage
-- Real routing engine integration (Google Directions / OSRM) in place of simulated
-  waypoints
-- Multi-role authentication for citizens, responders, and administrators
-- Relief camp resource matching and coordination
-- LLM-assisted verification for ambiguous or high-volume report conditions
+**T0:** seed data → static map → backend endpoint
+**T1:** Risk agent → Verifier agent → Classifier agent (live AI) → Router agent →
+SafetyScore display
+**T2** (only if T1 is fully stable): intensity/volume visual, cross-zone comparison,
+report clustering, deck citations
 
 ---
 
-## Contributing
+## Success Criteria
 
-Contributions are welcome. Please open an issue or pull request describing the
-proposed change before submitting significant modifications.
+- Full demo flow runs start to finish without manual intervention beyond the two
+  live-input moments (rainfall rate, new report text)
+- Classifier agent completes a live call in under 5 seconds with a visible fallback
+  if it fails
+- SafetyScore reasoning is visible on screen, not just a number
+- Evidence feed clearly visually distinguishes trust levels
+- SOS animation completes smoothly without erratic marker jumps
+- Entire flow rehearsed and demonstrable in under 4 minutes, leaving room for Q&A
+
+---
+
+## Risks & Mitigations
+
+| Risk | Mitigation |
+|---|---|
+| Live API call fails on stage | Hardcoded fallback response in Classifier agent |
+| Team over-scopes into T2/T3 | Build order is sequential and non-negotiable |
+| Map rendering issues on projector | Test on external display before demo day |
+| Postgres/Prisma setup friction | Test seed script on every team member's machine early |
+
+---
+
+## Open Questions / To Confirm Before Building
+
+- Exact coordinates for Uppal, LB Nagar, Nagole sub-zone centers and chosen
+  shelter/hazard/basin points
+- Exact Featherless AI model name/endpoint and rate limits
+- Who owns final pitch delivery and Q&A prep
 
 ---
 
