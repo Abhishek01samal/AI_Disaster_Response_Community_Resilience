@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Reveal } from "./motion";
 import { ChatWidget } from "./chat";
 import { logoutAction, type AuthUser } from "@/lib/auth";
+import { useSituation } from "@/lib/situation-context";
 
 const NAV = [
   { to: "#console", label: "Console" },
@@ -46,7 +48,16 @@ function UserMenu({ user }: { user: AuthUser | null }) {
   const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
 
-  if (!user) return null;
+  if (!user) {
+    return (
+      <Link
+        href="/auth/login"
+        className="hidden border border-border-strong px-2.5 py-1 font-mono text-[10px] tracking-[0.14em] uppercase transition-colors hover:bg-foreground hover:text-background sm:inline-flex"
+      >
+        Sign in
+      </Link>
+    );
+  }
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -93,13 +104,17 @@ export function Header({ user }: { user?: AuthUser | null }) {
           ))}
         </nav>
         <div className="ml-auto flex items-center gap-4">
-          <span className="hidden items-center gap-2 sm:flex">
+          <button
+            type="button"
+            onClick={() => toast.message("Live channel", { description: "Alert feed and map cache are connected. Ambulance remains a simulator." })}
+            className="hidden items-center gap-2 sm:flex"
+          >
             <span className="relative grid size-2 place-items-center">
               <span className="pulse-ring absolute size-2 rounded-full bg-foreground/40" />
               <span className="size-1.5 rounded-full bg-foreground" />
             </span>
             <span className="label-mono !text-foreground">Live</span>
-          </span>
+          </button>
           <Clock />
           <UserMenu user={user ?? null} />
         </div>
@@ -154,7 +169,7 @@ export function Footer() {
             <li>MAP TILES — OK</li>
             <li>ALERT FEED — OK</li>
             <li>AMBULANCE — SIMULATOR</li>
-            <li>CACHE — LAST KNOWN 00:04</li>
+            <li>AGENTS — READY</li>
           </ul>
         </div>
       </div>
@@ -168,18 +183,11 @@ export function Footer() {
 }
 
 export function Page({ children, user }: { children: ReactNode; user?: AuthUser | null }) {
+  const { snapshot } = useSituation();
   return (
     <div className="min-h-screen bg-background">
       <Header user={user} />
-      <Ticker
-        items={[
-          "RED WARNING — NADIPUR RIVER 8.42 M",
-          "18 ACTIVE INCIDENTS",
-          "37 OPEN SOS · 9 AT P0",
-          "SHELTER CAPACITY 68%",
-          "AMBULANCE LAYER: SIMULATED",
-        ]}
-      />
+      <Ticker items={snapshot.ticker} />
       <main>{children}</main>
       <Footer />
       <ChatWidget />

@@ -1,9 +1,24 @@
 "use client";
 
 import { useState } from "react";
+import { toast, Toaster } from "sonner";
 import { Page, Section, Tag } from "@/components/site/shell";
 import type { AuthUser } from "@/lib/auth";
-import { alerts, bounce, camps, incidents, metrics, responseQueue, safePlaces } from "@/lib/mock-data";
+import { bounce } from "@/lib/mock-data";
+import { confirmMatchAction, submitReportAction, submitSosAction } from "@/lib/ops";
+import { SituationProvider, useSituation } from "@/lib/situation-context";
+import { refreshDerived } from "@/lib/snapshot";
+
+const NADIPUR = { lat: 22.5726, lng: 88.3639 };
+
+const SOS_TYPES = [
+  { id: "TRAPPED", label: "Trapped" },
+  { id: "MEDICAL", label: "Medical" },
+  { id: "FLOOD", label: "Flooded" },
+  { id: "FIRE", label: "Fire" },
+  { id: "MISSING_PERSON", label: "Missing person" },
+  { id: "OTHER", label: "Other" },
+] as const;
 
 const LAYERS = ["Hazard", "Routes", "Shelters", "SOS", "Ambulance", "Reports"];
 const timeline = [
@@ -12,13 +27,6 @@ const timeline = [
   { t: "T-00h", k: "Impact", d: "River crosses danger mark. Emergency mode enabled for four sectors." },
   { t: "T+04h", k: "Response", d: "SOS triage, ambulance simulation, safe-location ranking live." },
   { t: "T+3d", k: "Recovery", d: "Damage reporting, resource matching, camp wind-down workflow." },
-];
-
-const matches = [
-  { need: "Blankets · 120 units", camp: "Municipal High School", offer: "Ward 4 Volunteer Group", conf: 0.92 },
-  { need: "Medicines · insulin cold chain", camp: "Grain Depot Hall", offer: "District Pharmacy Assoc.", conf: 0.81 },
-  { need: "Sanitation units · 6", camp: "Community Centre East", offer: "Municipal Works", conf: 0.74 },
-  { need: "Baby food · 40 kg", camp: "Grain Depot Hall", offer: "Relief Trust South", conf: 0.68 },
 ];
 
 function Bars() {
@@ -67,22 +75,177 @@ function Gauge({ value }: { value: number }) {
 }
 
 export default function ConsoleClient({ user }: { user: AuthUser | null }) {
+  return (
+    <SituationProvider>
+      <ConsoleApp user={user} />
+    </SituationProvider>
+  );
+}
+
+function ConsoleApp({ user }: { user: AuthUser | null }) {
+  const { snapshot, setSnapshot, runPrompt } = useSituation();
+  const incidents = snapshot.incidents;
+  const camps = snapshot.camps;
+  const safePlaces = snapshot.safePlaces;
+  const metrics = snapshot.metrics;
+  const matches = snapshot.matches;
+
   const [activeLayers, setActiveLayers] = useState<string[]>(["Hazard", "Shelters", "SOS"]);
   const [sel, setSel] = useState(incidents[0]!.id);
   const selected = incidents.find((i) => i.id === sel) ?? incidents[0]!;
+  const [emergencyMode, setEmergencyMode] = useState(false);
+  const [sosOpen, setSosOpen] = useState(false);
+  const [sosBusy, setSosBusy] = useState(false);
+  const [sosType, setSosType] = useState<(typeof SOS_TYPES)[number]["id"]>("TRAPPED");
+  const [people, setPeople] = useState(1);
+  const [trapped, setTrapped] = useState(true);
+  const [medical, setMedical] = useState(false);
+  const [consent, setConsent] = useState(true);
+  const [confirmBusy, setConfirmBusy] = useState<string | null>(null);
+  const [reportText, setReportText] = useState("");
+  const [reportBusy, setReportBusy] = useState(false);
+  const [phase, setPhase] = useState(timeline[2]!.t);
+
+  const queue = snapshot.queue;
+  const feed = snapshot.alerts;
 
   const toggleLayer = (l: string) =>
     setActiveLayers((a) => (a.includes(l) ? a.filter((x) => x !== l) : [...a, l]));
 
+  function enterEmergencyMode() {
+    setEmergencyMode(true);
+    setActiveLayers(["Hazard", "Shelters", "SOS", "Ambulance"]);
+    document.getElementById("map")?.scrollIntoView({ behavior: "smooth" });
+    setSosOpen(true);
+  }
+
+  async function locate(): Promise<{ lat: number; lng: number }> {
+    if (!navigator.geolocation) return NADIPUR;
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => resolve(NADIPUR),
+        { enableHighAccuracy: true, timeout: 4000 }
+      );
+    });
+  }
+
+  async function sendSos() {
+    setSosBusy(true);
+    try {
+      const loc = consent ? await locate() : NADIPUR;
+      const result = await submitSosAction({
+        emergencyType: sosType,
+        peopleAffected: people,
+        trapped,
+        medicalHelpRequired: medical,
+        locationConsent: consent,
+        lat: loc.lat,
+        lng: loc.lng,
+      });
+      const id = `SOS-${Date.now().toString().slice(-4)}`;
+      const localId = result.sosId?.toUpperCase() ?? id;
+      setSnapshot(
+        refreshDerived({
+          ...snapshot,
+          queue: [
+            {
+              id: localId,
+              who: `Household · ${people} persons`,
+              need: SOS_TYPES.find((t) => t.id === sosType)?.label ?? sosType,
+              pri: trapped || medical ? "P0" : "P2",
+              eta: "—",
+              status: "QUEUED",
+            },
+            ...snapshot.queue,
+          ],
+        })
+      );
+      if (!result.success) {
+        toast.message(`SOS ${localId} queued locally`, {
+          description: result.error ?? "Backend unreachable — simulator only.",
+        });
+      } else {
+        toast.success(`SOS ${localId} queued · simulated ambulance layer`);
+      }
+      setSosOpen(false);
+    } finally {
+      setSosBusy(false);
+    }
+  }
+
+  async function confirmMatch(need: string) {
+    setConfirmBusy(need);
+    try {
+      const result = await confirmMatchAction(need, "CONFIRM");
+      setSnapshot(
+        refreshDerived({
+          ...snapshot,
+          matches: snapshot.matches.map((m) =>
+            m.need === need ? { ...m, confirmed: true } : m
+          ),
+        })
+      );
+      toast.success(
+        result.success
+          ? "Match confirmed by human operator"
+          : "Match confirmed on console (backend offline)"
+      );
+    } finally {
+      setConfirmBusy(null);
+    }
+  }
+
+  async function submitReport() {
+    const text = reportText.trim();
+    if (!text) return;
+    setReportBusy(true);
+    try {
+      const loc = await locate();
+      const result = await submitReportAction({
+        rawText: text,
+        locationText: selected.zone,
+        lat: loc.lat,
+        lng: loc.lng,
+      });
+      await runPrompt(`Report that ${text}`);
+      setReportText("");
+      toast.success(
+        result.success
+          ? "Report accepted · agent pipeline started"
+          : "Report applied on console · agents ran locally"
+      );
+    } finally {
+      setReportBusy(false);
+    }
+  }
+
   return (
     <Page user={user}>
+      <Toaster position="top-center" theme="light" />
+      {emergencyMode ? (
+        <div className="border-b border-border-strong bg-foreground px-4 py-2 text-background">
+          <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-3 md:px-8">
+            <span className="font-mono text-[10px] tracking-[0.18em] uppercase">
+              Emergency mode · four sectors · guidance is location-conditioned · no autonomous orders
+            </span>
+            <button
+              type="button"
+              onClick={() => setEmergencyMode(false)}
+              className="border border-background/40 px-3 py-1 font-mono text-[10px] tracking-[0.16em] uppercase"
+            >
+              Exit
+            </button>
+          </div>
+        </div>
+      ) : null}
       <div id="console">
         {/* HERO */}
         <section className="border-b border-border-strong">
           <div className="mx-auto max-w-[1600px] px-4 pt-10 pb-0 md:px-8">
             <div className="flex flex-wrap items-baseline justify-between gap-4">
               <span className="label-mono">Operating layer · not a chatbot</span>
-              <span className="label-mono">Scenario: flood · district nadipur</span>
+              <span className="label-mono">Scenario: {snapshot.scenario}</span>
             </div>
             <h1 className="display-tight mt-6 text-[16vw] leading-[0.82] md:text-[11.5vw]">
               R<span className="text-[0.62em]">es</span>Q
@@ -97,12 +260,13 @@ export default function ConsoleClient({ user }: { user: AuthUser | null }) {
                 and confidence stay visible on every record.
               </p>
               <div className="flex flex-wrap items-start gap-2 md:col-span-3 md:justify-end">
-                <a
-                  href="#map"
+                <button
+                  type="button"
+                  onClick={enterEmergencyMode}
                   className="border border-border-strong bg-foreground px-4 py-2 font-mono text-[11px] tracking-[0.16em] text-background uppercase"
                 >
                   Enter emergency mode
-                </a>
+                </button>
                 <a
                   href="#situation"
                   className="border border-border-strong px-4 py-2 font-mono text-[11px] tracking-[0.16em] uppercase hover:bg-muted transition-colors"
@@ -128,12 +292,12 @@ export default function ConsoleClient({ user }: { user: AuthUser | null }) {
         </div>
 
         {/* CORE PANELS */}
-        <Section index="01" title="Core metrics" note="Refreshed 00:04 ago">
+        <Section index="01" title="Core metrics" note={`Risk ${snapshot.riskIndex} · river ${snapshot.riverM.toFixed(2)} m`}>
           <div className="grid gap-px bg-border md:grid-cols-3">
             <div className="panel p-5">
               <div className="flex items-baseline justify-between">
                 <p className="label-mono">Report inflow · 24h</p>
-                <span className="font-mono text-xs">412</span>
+                <span className="font-mono text-xs">{snapshot.reportsToday}</span>
               </div>
               <div className="mt-6">
                 <Bars />
@@ -147,18 +311,27 @@ export default function ConsoleClient({ user }: { user: AuthUser | null }) {
             <div className="panel p-5">
               <p className="label-mono">Composite risk index</p>
               <div className="mt-4">
-                <Gauge value={78} />
+                <Gauge value={snapshot.riskIndex} />
               </div>
               <p className="mt-2 font-mono text-[10px] text-muted-foreground">
-                GAUGE 8.42 M · RAINFALL 141 MM · DRAINAGE LOAD HIGH
+                GAUGE {snapshot.riverM.toFixed(2)} M · RAINFALL {snapshot.rainfallMm} MM · DRAINAGE LOAD {snapshot.drainage}
               </p>
             </div>
             <div className="panel p-5">
               <p className="label-mono">Response tracker</p>
               <ul className="mt-4 divide-y divide-border">
-                {responseQueue.map((r) => (
+                {queue.map((r) => (
                   <li key={r.id} className="flex items-center gap-3 py-2.5">
-                    <span className="font-mono text-[11px]">{r.id}</span>
+                    <button
+                      type="button"
+                      className="font-mono text-[11px] underline-offset-2 hover:underline"
+                      onClick={() => {
+                        document.getElementById("map")?.scrollIntoView({ behavior: "smooth" });
+                        toast.message(r.id, { description: `${r.status} · ${r.pri}` });
+                      }}
+                    >
+                      {r.id}
+                    </button>
                     <span className="truncate text-xs text-muted-foreground">{r.need}</span>
                     <span className="ml-auto font-mono text-[10px]">{r.pri}</span>
                     <Tag>{r.status}</Tag>
@@ -184,7 +357,14 @@ export default function ConsoleClient({ user }: { user: AuthUser | null }) {
               </thead>
               <tbody>
                 {incidents.map((i) => (
-                  <tr key={i.id} className="border-b border-border last:border-0">
+                  <tr
+                    key={i.id}
+                    className="border-b border-border last:border-0 cursor-pointer hover:bg-muted/40"
+                    onClick={() => {
+                      setSel(i.id);
+                      document.getElementById("map")?.scrollIntoView({ behavior: "smooth" });
+                    }}
+                  >
                     <td className="px-4 py-3 font-mono text-xs">{i.id}</td>
                     <td className="px-4 py-3 text-sm">{i.type}</td>
                     <td className="px-4 py-3 text-sm text-muted-foreground">{i.zone}</td>
@@ -214,17 +394,12 @@ export default function ConsoleClient({ user }: { user: AuthUser | null }) {
         </Section>
 
         {/* SAFE ACTION */}
-        <Section index="03" title="Safe-action engine" note="Hazard: flood">
+        <Section index="03" title="Safe-action engine" note={`Hazard: ${snapshot.hazard}`}>
           <div className="grid gap-px bg-border lg:grid-cols-3">
             <div className="panel p-6 lg:col-span-1">
               <p className="label-mono">Do now</p>
               <ol className="mt-4 space-y-4">
-                {[
-                  "Move to the highest accessible floor. Do not enter basements or underpasses.",
-                  "Take phone, power bank, medicines, ID and drinking water.",
-                  "Avoid the embankment road — two segments flagged submerged.",
-                  "Share live location only while an SOS is active.",
-                ].map((s, n) => (
+                {snapshot.doNow.map((s, n) => (
                   <li key={n} className="flex gap-4">
                     <span className="font-mono text-xs text-muted-foreground">
                       {String(n + 1).padStart(2, "0")}
@@ -242,7 +417,16 @@ export default function ConsoleClient({ user }: { user: AuthUser | null }) {
               <ul className="mt-4 divide-y divide-border">
                 {safePlaces.map((p) => (
                   <li key={p.name} className="grid grid-cols-12 items-center gap-2 py-3">
-                    <span className="col-span-12 text-sm md:col-span-4">{p.name}</span>
+                    <button
+                      type="button"
+                      className="col-span-12 text-left text-sm md:col-span-4 hover:underline"
+                      onClick={() => {
+                        document.getElementById("map")?.scrollIntoView({ behavior: "smooth" });
+                        toast.message(p.name, { description: `${p.kind} · score ${p.score} · ${p.dist}` });
+                      }}
+                    >
+                      {p.name}
+                    </button>
                     <span className="label-mono col-span-3 md:col-span-2">{p.kind}</span>
                     <span className="col-span-3 font-mono text-xs md:col-span-1">{p.elev}</span>
                     <span className="col-span-3 font-mono text-xs md:col-span-2">{p.cap}</span>
@@ -284,10 +468,15 @@ export default function ConsoleClient({ user }: { user: AuthUser | null }) {
                 d: "Classification, clustering and matching only. Safety-critical calls stay deterministic and human-reviewed.",
               },
             ].map((c) => (
-              <div key={c.t} className="panel p-6">
+              <button
+                key={c.t}
+                type="button"
+                className="panel p-6 text-left"
+                onClick={() => toast.message(c.t, { description: c.d })}
+              >
                 <h3 className="display-tight text-lg">{c.t}</h3>
                 <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{c.d}</p>
-              </div>
+              </button>
             ))}
           </div>
         </Section>
@@ -301,6 +490,7 @@ export default function ConsoleClient({ user }: { user: AuthUser | null }) {
             return (
               <button
                 key={l}
+                type="button"
                 onClick={() => toggleLayer(l)}
                 className={`border border-border-strong px-3 py-1.5 font-mono text-[10px] tracking-[0.16em] uppercase transition-colors ${
                   on ? "bg-foreground text-background" : "bg-surface text-foreground"
@@ -327,6 +517,7 @@ export default function ConsoleClient({ user }: { user: AuthUser | null }) {
                 incidents.map((i) => (
                   <button
                     key={i.id}
+                    type="button"
                     onClick={() => setSel(i.id)}
                     style={{ left: `${i.x}%`, top: `${i.y}%` }}
                     className="absolute -translate-x-1/2 -translate-y-1/2"
@@ -373,6 +564,30 @@ export default function ConsoleClient({ user }: { user: AuthUser | null }) {
                   />
                 ))}
 
+              {activeLayers.includes("Ambulance") &&
+                [
+                  [42, 62],
+                  [70, 44],
+                ].map(([x, y]) => (
+                  <span
+                    key={`a-${x}`}
+                    title="Simulated ambulance"
+                    style={{ left: `${x}%`, top: `${y}%` }}
+                    className="absolute -translate-x-1/2 -translate-y-1/2 border border-border-strong bg-foreground px-1 font-mono text-[7px] tracking-[0.08em] text-background"
+                  >
+                    AMB
+                  </span>
+                ))}
+
+              {activeLayers.includes("Reports") &&
+                incidents.map((i) => (
+                  <span
+                    key={`r-${i.id}`}
+                    style={{ left: `${i.x + 3}%`, top: `${i.y + 4}%` }}
+                    className="absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground/50"
+                  />
+                ))}
+
               <div className="absolute bottom-3 left-3 flex items-center gap-2">
                 <span className="h-px w-16 bg-foreground" />
                 <span className="font-mono text-[10px]">500 M</span>
@@ -399,17 +614,92 @@ export default function ConsoleClient({ user }: { user: AuthUser | null }) {
             <ul className="mt-3 divide-y divide-border">
               {safePlaces.slice(0, 3).map((p) => (
                 <li key={p.name} className="flex items-center justify-between py-2.5 text-sm">
-                  <span>{p.name}</span>
+                  <button
+                    type="button"
+                    className="text-left hover:underline"
+                    onClick={() => toast.message(p.name, { description: `Route score ${p.score} · ${p.dist}` })}
+                  >
+                    {p.name}
+                  </button>
                   <span className="font-mono text-xs text-muted-foreground">{p.dist}</span>
                 </li>
               ))}
             </ul>
 
-            <button className="mt-8 w-full border border-border-strong bg-foreground px-4 py-3 font-mono text-[11px] tracking-[0.2em] text-background uppercase">
-              Send SOS
-            </button>
+            {sosOpen ? (
+              <div className="mt-6 space-y-3 border-t border-border pt-4">
+                <p className="label-mono">SOS intake</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {SOS_TYPES.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => {
+                        setSosType(t.id);
+                        setTrapped(t.id === "TRAPPED");
+                        setMedical(t.id === "MEDICAL");
+                      }}
+                      className={`border px-2 py-1.5 font-mono text-[10px] tracking-[0.12em] uppercase ${
+                        sosType === t.id
+                          ? "border-border-strong bg-foreground text-background"
+                          : "border-border"
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                <label className="flex items-center justify-between font-mono text-[11px]">
+                  People affected
+                  <input
+                    type="number"
+                    min={1}
+                    value={people}
+                    onChange={(e) => setPeople(Math.max(1, Number(e.target.value) || 1))}
+                    className="w-16 border border-border-strong bg-background px-2 py-1 text-right"
+                  />
+                </label>
+                <label className="flex items-center gap-2 font-mono text-[11px]">
+                  <input type="checkbox" checked={trapped} onChange={(e) => setTrapped(e.target.checked)} />
+                  Currently trapped
+                </label>
+                <label className="flex items-center gap-2 font-mono text-[11px]">
+                  <input type="checkbox" checked={medical} onChange={(e) => setMedical(e.target.checked)} />
+                  Medical help required
+                </label>
+                <label className="flex items-center gap-2 font-mono text-[11px]">
+                  <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+                  Share live location while SOS is active
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={sosBusy}
+                    onClick={sendSos}
+                    className="flex-1 border border-border-strong bg-foreground px-4 py-3 font-mono text-[11px] tracking-[0.2em] text-background uppercase disabled:opacity-50"
+                  >
+                    {sosBusy ? "Sending…" : "Confirm SOS"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSosOpen(false)}
+                    className="border border-border-strong px-3 py-3 font-mono text-[11px] tracking-[0.16em] uppercase"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setSosOpen(true)}
+                className="mt-8 w-full border border-border-strong bg-foreground px-4 py-3 font-mono text-[11px] tracking-[0.2em] text-background uppercase"
+              >
+                Send SOS
+              </button>
+            )}
             <p className="mt-2 font-mono text-[10px] text-muted-foreground">
-              Live location shared only while the SOS is active. Revocable at any time.
+              Live location shared only while the SOS is active. Revocable at any time. Ambulance layer is simulated.
             </p>
           </div>
         </div>
@@ -417,7 +707,7 @@ export default function ConsoleClient({ user }: { user: AuthUser | null }) {
 
       <Section index="06" title="Responder queue" note="Ambulance layer is a labelled simulator">
         <div className="grid gap-px bg-border md:grid-cols-2 xl:grid-cols-4">
-          {responseQueue.map((r) => (
+          {queue.map((r) => (
             <div key={r.id} className="panel p-5">
               <div className="flex items-baseline justify-between">
                 <span className="font-mono text-xs">{r.id}</span>
@@ -429,6 +719,35 @@ export default function ConsoleClient({ user }: { user: AuthUser | null }) {
                 <span className="label-mono">{r.status}</span>
                 <span className="font-mono text-xl tabular-nums">{r.eta}</span>
               </div>
+              <button
+                type="button"
+                className="mt-3 w-full border border-border-strong px-3 py-1.5 font-mono text-[10px] tracking-[0.14em] uppercase hover:bg-foreground hover:text-background"
+                onClick={() => {
+                  const order = [
+                    "QUEUED",
+                    "TRIAGE",
+                    "UNIT ASSIGNED",
+                    "AMBULANCE EN ROUTE",
+                    "ARRIVED",
+                    "CLOSED",
+                  ];
+                  const i = Math.max(0, order.indexOf(r.status));
+                  const next = order[Math.min(order.length - 1, i + 1)]!;
+                  setSnapshot(
+                    refreshDerived({
+                      ...snapshot,
+                      queue: snapshot.queue.map((q) =>
+                        q.id === r.id ? { ...q, status: next } : q
+                      ),
+                    })
+                  );
+                  toast.message(`${r.id} → ${next}`, {
+                    description: "Simulator only — not a real dispatch.",
+                  });
+                }}
+              >
+                Advance status
+              </button>
             </div>
           ))}
         </div>
@@ -441,10 +760,18 @@ export default function ConsoleClient({ user }: { user: AuthUser | null }) {
             const pct = Math.round((c.ppl / c.cap) * 100);
             return (
               <div key={c.name} className="panel p-6">
-                <div className="flex items-start justify-between gap-4">
+                <button
+                  type="button"
+                  className="flex w-full items-start justify-between gap-4 text-left"
+                  onClick={() =>
+                    toast.message(c.name, {
+                      description: `${c.ppl}/${c.cap} · ${c.state}`,
+                    })
+                  }
+                >
                   <h3 className="display-tight text-xl">{c.name}</h3>
                   <Tag>{c.state}</Tag>
-                </div>
+                </button>
                 <div className="mt-6 flex items-end gap-4">
                   <span className="font-mono text-5xl tabular-nums">{pct}%</span>
                   <span className="label-mono pb-2">
@@ -510,9 +837,35 @@ export default function ConsoleClient({ user }: { user: AuthUser | null }) {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <button className="border border-border-strong px-3 py-1 font-mono text-[10px] tracking-[0.14em] uppercase hover:bg-foreground hover:text-background transition-colors">
-                      Confirm
-                    </button>
+                    {m.confirmed ? (
+                      <Tag>Human confirmed</Tag>
+                    ) : (
+                      <div className="flex gap-1">
+                      <button
+                        type="button"
+                        disabled={confirmBusy === m.need}
+                        onClick={() => confirmMatch(m.need)}
+                        className="border border-border-strong px-3 py-1 font-mono text-[10px] tracking-[0.14em] uppercase hover:bg-foreground hover:text-background transition-colors disabled:opacity-50"
+                      >
+                        {confirmBusy === m.need ? "…" : "Confirm"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSnapshot(
+                            refreshDerived({
+                              ...snapshot,
+                              matches: snapshot.matches.filter((x) => x.need !== m.need),
+                            })
+                          );
+                          toast.message("Match rejected");
+                        }}
+                        className="border border-border-strong px-3 py-1 font-mono text-[10px] tracking-[0.14em] uppercase hover:bg-muted"
+                      >
+                        Reject
+                      </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -525,8 +878,31 @@ export default function ConsoleClient({ user }: { user: AuthUser | null }) {
       <Section id="situation" index="09" title="Official & community feed" note="Newest first">
         <div className="grid gap-px bg-border lg:grid-cols-3">
           <div className="panel p-6 lg:col-span-2">
+            <form
+              className="mb-6 space-y-2 border-b border-border pb-6"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void submitReport();
+              }}
+            >
+              <p className="label-mono">File a community report</p>
+              <textarea
+                value={reportText}
+                onChange={(e) => setReportText(e.target.value)}
+                placeholder="What are you seeing, and where?"
+                rows={3}
+                className="w-full border border-border-strong bg-background px-3 py-2 text-sm outline-none focus:border-foreground"
+              />
+              <button
+                type="submit"
+                disabled={reportBusy || !reportText.trim()}
+                className="border border-border-strong bg-foreground px-4 py-2 font-mono text-[10px] tracking-[0.16em] text-background uppercase disabled:opacity-40"
+              >
+                {reportBusy ? "Submitting…" : "Submit to agents"}
+              </button>
+            </form>
             <ul className="divide-y divide-border">
-              {[...alerts].reverse().map((a) => (
+              {[...feed].reverse().map((a) => (
                 <li key={a.code} className="py-5 first:pt-0 last:pb-0">
                   <div className="flex flex-wrap items-center gap-3">
                     <span className="font-mono text-xs">{a.code}</span>
@@ -568,7 +944,14 @@ export default function ConsoleClient({ user }: { user: AuthUser | null }) {
       <Section index="10" title="Preparedness to recovery" note="One continuous timeline">
         <ol className="grid gap-px bg-border md:grid-cols-5">
           {timeline.map((s) => (
-            <li key={s.t} className="panel p-5">
+            <li
+              key={s.t}
+              className={`panel p-5 cursor-pointer ${phase === s.t ? "ring-1 ring-foreground" : ""}`}
+              onClick={() => {
+                setPhase(s.t);
+                toast.message(s.k, { description: s.d });
+              }}
+            >
               <span className="font-mono text-xs">{s.t}</span>
               <h3 className="display-tight mt-3 text-lg">{s.k}</h3>
               <p className="mt-3 text-sm leading-relaxed text-muted-foreground">{s.d}</p>
@@ -584,9 +967,14 @@ export default function ConsoleClient({ user }: { user: AuthUser | null }) {
             "No structural safety certification. Building suitability is a factor list, not an inspection.",
             "No autonomous dispatch. Ambulance coordination is a clearly labelled simulator here.",
           ].map((t) => (
-            <p key={t} className="panel p-6 text-sm leading-relaxed">
+            <button
+              key={t}
+              type="button"
+              className="panel p-6 text-left text-sm leading-relaxed"
+              onClick={() => toast.message("Limit in force", { description: t })}
+            >
               {t}
-            </p>
+            </button>
           ))}
         </div>
       </Section>

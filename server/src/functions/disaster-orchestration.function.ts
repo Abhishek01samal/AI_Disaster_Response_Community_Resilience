@@ -21,6 +21,7 @@ import type {
   OrchestratorOutput,
 } from "../agents/schemas.js";
 import type { EvaluationInput } from "../agents/evaluation-agent.js";
+import { toIncidentType, toHazardType } from "../utils/incident-type.js";
 
 /**
  * 3. Master / Orchestrator Agent (deterministic)
@@ -162,7 +163,7 @@ export const disasterResponseOrchestrator = inngest.createFunction(
         prisma.alert.findMany({
           where: {
             isActive: true,
-            hazardType: mapEventTypeToHazard(refinedEvent.eventType) as any,
+            hazardType: toHazardType(refinedEvent.eventType) as any,
           },
           take: 10,
           orderBy: { issuedAt: "desc" },
@@ -321,7 +322,7 @@ export const disasterResponseOrchestrator = inngest.createFunction(
         data: {
           title: `${refinedEvent.eventType} — ${refinedEvent.location.name ?? "Unknown location"}`,
           description: refinedEvent.normalizedText,
-          incidentType: refinedEvent.eventType as any,
+          incidentType: toIncidentType(refinedEvent.eventType) as any,
           severity: mapRiskLevelToSeverity(risk.riskLevel) as any,
           priority: mapPriorityScoreToPriority(risk.priorityScore) as any,
           sourceState: "AI_SIGNAL",
@@ -409,16 +410,6 @@ export const disasterResponseOrchestrator = inngest.createFunction(
     };
   }
 );
-
-function mapEventTypeToHazard(eventType: string): string {
-  const map: Record<string, string> = {
-    FLOOD_REPORT: "FLOOD",
-    LANDSLIDE: "LANDSLIDE",
-    FIRE: "FIRE",
-    STRUCTURAL_DANGER: "EARTHQUAKE",
-  };
-  return map[eventType] ?? "OTHER";
-}
 
 function mapRiskLevelToSeverity(riskLevel: string): string {
   const map: Record<string, string> = {

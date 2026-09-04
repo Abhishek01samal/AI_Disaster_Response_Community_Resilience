@@ -2,6 +2,8 @@ import { randomUUID } from "crypto";
 import AsyncHandler from "../utils/async-handler.js";
 import ApiResponse from "../utils/api-response.js";
 import { inngest } from "../lib/inngest.js";
+import { prisma } from "../lib/prisma.js";
+import logger from "../lib/logger.js";
 import type {
   SubmitReportBody,
   SubmitSosBody,
@@ -20,17 +22,33 @@ const submitReport = AsyncHandler(async (req: any, res: any) => {
 
   const sourceType = deriveSourceType(user.role);
 
+  let reportId = `raw-${randomUUID().slice(0, 8)}`;
+  try {
+    const report = await prisma.communityReport.create({
+      data: {
+        userId: user.id,
+        incidentType: "OTHER",
+        text: body.rawText,
+        sourceState: sourceType,
+        verification: "UNVERIFIED",
+      },
+    });
+    reportId = report.id;
+  } catch (err) {
+    logger.warn(
+      `Community report persist skipped: ${(err as Error).message}`
+    );
+  }
+
   const event = await inngest.send({
     name: "resq/report.received",
     data: {
-      rawId: `raw-${randomUUID().slice(0, 8)}`,
+      rawId: reportId,
       rawText: body.rawText,
       language: body.language ?? "en",
       source: { type: sourceType, sourceId: user.id },
       locationText: body.locationText,
       receivedAt: new Date().toISOString(),
-      // Coordinates are optional at ingestion time; the Data Refinement
-      // Agent will only use them if present, never invent its own.
       ...(body.lat !== undefined && body.lng !== undefined
         ? { locationHint: { lat: body.lat, lng: body.lng } }
         : {}),
@@ -45,7 +63,7 @@ const submitReport = AsyncHandler(async (req: any, res: any) => {
       new ApiResponse(
         202,
         "Report accepted. Disaster-response pipeline started.",
-        { eventIds: event.ids }
+        { eventIds: event.ids, reportId }
       )
     );
 });
@@ -70,6 +88,7 @@ const submitSos = AsyncHandler(async (req: any, res: any) => {
     locationConsent: body.locationConsent,
     location: { lat: body.lat, lng: body.lng },
     timestamp: new Date().toISOString(),
+    emergencyNote: body.emergencyNote,
   };
 
   const event = await inngest.send({

@@ -6,6 +6,7 @@ import { resourceFunction } from "./resource.function.js";
 import { responseFunction } from "./response.function.js";
 import { evaluationFunction } from "./evaluation.function.js";
 import { disasterResponseOrchestrator } from "./disaster-orchestration.function.js";
+import { sosResponseOrchestrator } from "./sos-orchestration.function.js";
 
 /**
  * Every registered Inngest function for the ResQ agent system:
@@ -22,6 +23,7 @@ import { disasterResponseOrchestrator } from "./disaster-orchestration.function.
  */
 export const resqAgentFunctions = [
   disasterResponseOrchestrator,
+  sosResponseOrchestrator,
   dataRefinementFunction,
   validationFunction,
   riskFunction,

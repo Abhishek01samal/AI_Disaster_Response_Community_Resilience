@@ -4,11 +4,17 @@ import { validateData } from "../middlewares/zod-validation.js";
 import {
   submitReportSchema,
   submitSosSchema,
+  chatSchema,
+  confirmMatchSchema,
 } from "../validators/ingestion.js";
 import {
   submitReport,
   submitSos,
 } from "../controllers/ingestion.controller.js";
+import {
+  chatGuidance,
+  confirmResourceMatch,
+} from "../controllers/ops.controller.js";
 import {
   getWorkflowById,
   listWorkflows,
@@ -23,6 +29,14 @@ router.post(
   submitReport
 );
 router.post("/sos", authMiddleware, validateData(submitSosSchema), submitSos);
+
+router.post("/chat", authMiddleware, validateData(chatSchema), chatGuidance);
+router.post(
+  "/matches/confirm",
+  authMiddleware,
+  validateData(confirmMatchSchema),
+  confirmResourceMatch
+);
 
 router.get("/workflows", authMiddleware, listWorkflows);
 router.get("/workflows/:id", authMiddleware, getWorkflowById);

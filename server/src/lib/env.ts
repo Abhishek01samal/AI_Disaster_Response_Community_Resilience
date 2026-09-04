@@ -39,7 +39,7 @@ const envSchema = z.object({
     .string()
     .min(1, { message: "FEATHERLESS_API_KEY is required." })
     .optional(),
-  AI_MODEL: z.string().default("gpt-4o-mini"),
+  AI_MODEL: z.string().default("Qwen/Qwen2.5-7B-Instruct"),
   INNGEST_EVENT_KEY: z.string().optional(),
   INNGEST_SIGNING_KEY: z.string().optional(),
 });
