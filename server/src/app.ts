@@ -10,6 +10,8 @@ import cors from "cors";
 import { ENV } from "./lib/env.js";
 import errorMiddleware from "./middlewares/error-middleware.js";
 import morganMiddleware from "./middlewares/morgan-middleware.js";
+import { serve } from "inngest/express";
+import { inngest,functions } from "./lib/inngest.js";
 
 const app: Express = express();
 
@@ -29,6 +31,8 @@ app.use(express.json());
 app.use(cookieParser());
 app.set("trust proxy", 1);
 app.use(rateLimiter);
+
+app.use("/api/inngest", serve({ client: inngest, functions }));
 
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 app.use("", rootRouter);
