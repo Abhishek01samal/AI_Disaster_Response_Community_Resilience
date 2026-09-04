@@ -11,14 +11,19 @@ const sendRegistrationMail = async (
   verifyLink: string
 ) => {
   try {
-    const { html, plainText } = await registrationMail(username, verifyLink);
+    const { html, plainText } = await registrationMail(
+      username,
+      verifyLink
+    );
+
     const info = await transporter.sendMail({
-      from: '"Auth System Team" <auth-system@gmail.com>',
+      from: '"ResQ Support" <support@resq.org>',
       to: email,
-      subject: "Welcome to Auth System",
+      subject: "Welcome to ResQ",
       text: plainText,
       html: html,
     });
+
     // console.log("Message sent: %s", info.messageId);
   } catch (err) {
     logger.error("Error while sending mail:", err);
@@ -31,14 +36,19 @@ const sendVerificationMail = async (
   verifyLink: string
 ) => {
   try {
-    const { html, plainText } = await verificationMail(username, verifyLink);
+    const { html, plainText } = await verificationMail(
+      username,
+      verifyLink
+    );
+
     const info = await transporter.sendMail({
-      from: '"Auth System Team" <auth-system@gmail.com>',
+      from: '"ResQ Support" <support@resq.org>',
       to: email,
-      subject: "Verify your email for Auth System",
+      subject: "Verify your email for ResQ",
       text: plainText,
       html: html,
     });
+
     // console.log("Message sent: %s", info.messageId);
   } catch (err) {
     logger.error("Error while sending mail:", err);
@@ -48,13 +58,15 @@ const sendVerificationMail = async (
 const sendOtpMail = async (email: string, otp: string) => {
   try {
     const { html, plainText } = await otpMail(email, otp);
+
     const info = await transporter.sendMail({
-      from: '"Auth System Team" <auth-system@gmail.com>',
+      from: '"ResQ Support" <support@resq.org>',
       to: email,
-      subject: "Your OTP Code for Auth System",
+      subject: "Your ResQ Verification Code",
       text: plainText,
       html: html,
     });
+
     // console.log("Message sent: %s", info.messageId);
   } catch (err) {
     logger.error("Error while sending mail:", err);
@@ -73,13 +85,15 @@ const sendOauthWelcomeMail = async (
       provider,
       dashboardLink
     );
+
     const info = await transporter.sendMail({
-      from: '"Auth System Team" <auth-system@gmail.com>',
+      from: '"ResQ Support" <support@resq.org>',
       to: email,
-      subject: `Welcome to Auth System - ${provider} Login`,
+      subject: `Welcome to ResQ - ${provider} Login`,
       text: plainText,
       html: html,
     });
+
     // console.log("Message sent: %s", info.messageId);
   } catch (err) {
     logger.error("Error while sending mail:", err);

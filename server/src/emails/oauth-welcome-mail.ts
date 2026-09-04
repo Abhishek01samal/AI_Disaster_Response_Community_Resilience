@@ -10,31 +10,33 @@ export const oauthWelcomeMail = async (
       name: username,
 
       intro: [
-        "Welcome to Auth System 👋",
+        "Welcome to ResQ 👋",
         `Your account has been successfully created using ${provider}.`,
-        "You're all set and ready to go!",
+        "You're all set to access ResQ and stay informed with actionable emergency intelligence.",
       ],
 
       action: {
-        instructions: "Click below to go to your dashboard:",
+        instructions: "Click below to access your ResQ dashboard:",
         button: {
           color: "#0B3D91",
-          text: "Go to Dashboard",
+          text: "Go to ResQ Dashboard",
           link: dashboardLink,
         },
       },
 
       outro: [
-        "What you can do now:",
+        "With ResQ, you can:",
         "",
-        "✔ Access your personalized dashboard",
-        "✔ Update your profile information",
-        "✔ Explore all features of Auth System",
-        "✔ Manage your account settings",
+        "✔ Monitor flood risk and changing conditions",
+        "✔ Understand potential population and infrastructure impact",
+        "✔ View emergency-response insights",
+        "✔ Access actionable recommendations for critical situations",
         "",
-        "Your account is fully activated and ready to use. Enjoy!",
+        "Your account is fully activated and ready to use.",
         "",
-        "If you have any questions or need assistance, just reply to this email — we're here to help 💙",
+        "Stay informed. Stay prepared. Stay safe. 💙",
+        "",
+        "— Team ResQ",
       ],
     },
   };
@@ -42,7 +44,7 @@ export const oauthWelcomeMail = async (
   // Generate an HTML email with the provided contents
   const html = mailGenerator.generate(email);
 
-  // Generate the plaintext version of the e-mail (for clients that do not support HTML)
+  // Generate the plaintext version of the email
   const plainText = mailGenerator.generatePlaintext(email);
 
   return { html, plainText };

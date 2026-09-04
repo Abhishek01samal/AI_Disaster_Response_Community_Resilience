@@ -1,14 +1,19 @@
 import Mailgen from "mailgen";
 
-// Configure mailgen by setting a theme and your product info
+// Configure Mailgen with ResQ branding and product information
 export const mailGenerator = new Mailgen({
   theme: "default",
+
   product: {
-    // Appears in header & footer of e-mails
-    name: "Auth System",
-    link: "https://mailgen.js/",
+    // Appears in the header & footer of emails
+    name: "ResQ",
+
+    // ResQ application/website
+    link: process.env.FRONTEND_URL || "http://localhost:3000",
+
     // Optional product logo
-    // logo: 'https://mailgen.js/img/logo.png'
-    copyright: `© ${new Date().getFullYear()} Auth System`,
+    // logo: "https://your-resq-domain.com/logo.png",
+
+    copyright: `© ${new Date().getFullYear()} ResQ. All rights reserved.`,
   },
 });

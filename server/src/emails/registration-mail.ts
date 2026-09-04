@@ -9,13 +9,14 @@ export const registrationMail = async (
       name: username,
 
       intro: [
-        "Welcome to Auth System 👋",
-        "Your account has been successfully created.",
-        "Please verify your email to activate your account and get started.",
+        "Welcome to ResQ 👋",
+        "Your ResQ account has been successfully created.",
+        "You're now ready to access a platform built to turn changing flood conditions into actionable emergency intelligence.",
       ],
 
       action: {
-        instructions: "Click below to verify your account:",
+        instructions:
+          "Verify your email address to activate your ResQ account:",
         button: {
           color: "#0B3D91",
           text: "Verify My Account",
@@ -24,15 +25,18 @@ export const registrationMail = async (
       },
 
       outro: [
-        "What you can do after verification:",
+        "With ResQ, you can:",
         "",
-        "✔ Securely access your account",
-        "✔ Use protected features",
-        "✔ Manage your profile and settings",
+        "✔ Monitor flood risk and changing conditions",
+        "✔ Understand potential population and infrastructure impact",
+        "✔ Access emergency-response insights",
+        "✔ Explore actionable recommendations for critical situations",
         "",
-        "If you didn’t create this account, you can safely ignore this email.",
+        "If you didn't create a ResQ account, you can safely ignore this email.",
         "",
-        "Need help? Just reply to this email — we’re here for you 💙",
+        "Stay informed. Stay prepared. Stay safe. 💙",
+        "",
+        "— Team ResQ",
       ],
     },
   };
@@ -40,7 +44,8 @@ export const registrationMail = async (
   // Generate an HTML email with the provided contents
   const html = mailGenerator.generate(email);
 
-  // Generate the plaintext version of the e-mail (for clients that do not support HTML)
+  // Generate the plaintext version of the email
   const plainText = mailGenerator.generatePlaintext(email);
+
   return { html, plainText };
 };
