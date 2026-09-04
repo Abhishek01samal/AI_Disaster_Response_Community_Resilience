@@ -37,7 +37,7 @@ const envSchema = z.object({
     .min(1, { message: "GITHUB_CLIENT_SECRET is required." }),
   FEATHERLESS_API_KEY: z
     .string()
-    .min(1, { message: "OPENAI_API_KEY is required." })
+    .min(1, { message: "FEATHERLESS_API_KEY is required." })
     .optional(),
   AI_MODEL: z.string().default("gpt-4o-mini"),
   INNGEST_EVENT_KEY: z.string().optional(),
