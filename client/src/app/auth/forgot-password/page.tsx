@@ -56,14 +56,20 @@ export default function ForgotPasswordPage() {
                 ✓
               </div>
               <p className="font-mono text-sm leading-relaxed">
-                If an account with that address exists, a reset link has been sent.
+                If an account with that address exists, a 6-digit code has been sent.
               </p>
               <p className="mt-4 font-mono text-[10px] text-muted-foreground">
-                Check your inbox including spam folders.
+                Check your inbox including spam folders. The code expires in 10 minutes.
               </p>
               <Link
+                href={`/auth/reset-password?email=${encodeURIComponent(email)}`}
+                className="mt-6 block border border-border-strong bg-foreground px-4 py-3 font-mono text-[11px] tracking-[0.2em] uppercase text-center text-background transition-colors hover:bg-foreground/85"
+              >
+                Enter code
+              </Link>
+              <Link
                 href="/auth/login"
-                className="mt-6 block border border-border-strong px-4 py-3 font-mono text-[11px] tracking-[0.2em] uppercase text-center transition-colors hover:bg-muted"
+                className="mt-3 block border border-border-strong px-4 py-3 font-mono text-[11px] tracking-[0.2em] uppercase text-center transition-colors hover:bg-muted"
               >
                 Back to sign in
               </Link>
@@ -71,7 +77,7 @@ export default function ForgotPasswordPage() {
           ) : (
             <>
               <p className="mb-5 text-sm leading-relaxed text-muted-foreground">
-                Enter your registered email address. We&apos;ll send a secure reset link.
+                Enter your registered email address. We&apos;ll send a 6-digit code to reset your password.
               </p>
 
               {error && (
