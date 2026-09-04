@@ -1,4 +1,4 @@
-# PRD — FloodPulse
+# PRD — ResQ
 
 ## 1. Problem Statement
 
