@@ -6,6 +6,12 @@ datasource db {
   provider = "postgresql"
 }
 
+//
+// ============================================================
+// USER & AUTHENTICATION
+// ============================================================
+//
+
 model User {
   id         String          @id @default(uuid())
   name       String
@@ -15,7 +21,20 @@ model User {
   createdAt  DateTime        @default(now())
   updatedAt  DateTime        @updatedAt
   isVerified Boolean         @default(false)
-  providers  OAuthProvider[]
+
+  providers OAuthProvider[]
+
+  emergencyContacts EmergencyContact[]
+  locations         UserLocation[]
+  assistanceProfile UserAssistanceProfile?
+  consents          UserConsent[]
+
+  sosRequests       SOSRequest[]
+  communityReports  CommunityReport[]
+  resourceOffers    ResourceOffer[]
+  donations         Donation[]
+
+  auditEvents       AuditEvent[] @relation("UserAuditEvents")
 }
 
 model OAuthProvider {
@@ -25,7 +44,8 @@ model OAuthProvider {
   userId         String
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
-  user           User      @relation(fields: [userId], references: [id])
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([providerName, providerUserId])
 }
@@ -33,10 +53,925 @@ model OAuthProvider {
 enum Role {
   User
   Admin
+  Volunteer
+  ReliefOperator
+  MedicalOperator
+  Responder
+  GovernmentOfficer
 }
 
 enum providers {
   LOCAL
   GOOGLE
   GITHUB
+}
+
+//
+// ============================================================
+// EMERGENCY CONTACTS
+// ============================================================
+//
+
+model EmergencyContact {
+  id           String   @id @default(uuid())
+  userId       String
+  name         String
+  relationship String
+  phone        String
+  priority     Int      @default(1)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+//
+// ============================================================
+// USER LOCATION
+// ============================================================
+//
+
+model UserLocation {
+  id          String   @id @default(uuid())
+  userId      String
+  latitude    Float
+  longitude   Float
+  accuracy    Float?
+  capturedAt  DateTime @default(now())
+  isCurrent   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([capturedAt])
+}
+
+//
+// ============================================================
+// USER ASSISTANCE / VULNERABILITY PROFILE
+// ============================================================
+//
+
+model UserAssistanceProfile {
+  id                        String   @id @default(uuid())
+  userId                    String   @unique
+
+  householdSize             Int?
+  childrenCount             Int?
+  elderlyCount              Int?
+  mobilityAssistance        Boolean  @default(false)
+  wheelchairRequired        Boolean  @default(false)
+  visualAssistance          Boolean  @default(false)
+  hearingAssistance         Boolean  @default(false)
+  transportAssistance       Boolean  @default(false)
+
+  medicalHelpRequired       Boolean  @default(false)
+  criticalMedicationNeeded  Boolean  @default(false)
+  emergencyNote             String?
+
+  preferredLanguage         String?
+  notificationPreference    String?
+
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+//
+// ============================================================
+// USER CONSENT
+// ============================================================
+//
+
+model UserConsent {
+  id          String       @id @default(uuid())
+  userId      String
+  consentType ConsentType
+  granted     Boolean      @default(false)
+
+  grantedAt   DateTime?
+  revokedAt   DateTime?
+
+  purpose     String?
+  expiresAt   DateTime?
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, consentType])
+}
+
+enum ConsentType {
+  LOCATION
+  MEDICAL_INFORMATION
+  EMERGENCY_CONTACT
+  COMMUNITY_REPORT
+  MEDIA_UPLOAD
+  NOTIFICATION
+}
+
+//
+// ============================================================
+// LOCATIONS
+// ============================================================
+//
+
+model Location {
+  id          String       @id @default(uuid())
+  name        String
+  type        LocationType
+
+  latitude    Float
+  longitude   Float
+
+  address     String?
+  district    String?
+  state       String?
+  country     String?
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  buildings       Building[]
+  shelters        Shelter[]
+  incidents       Incident[]
+  hazardZones     HazardZone[]
+  communityReports CommunityReport[]
+  resourceOffers  ResourceOffer[]
+  donations       Donation[]
+
+  @@index([latitude, longitude])
+  @@index([district])
+}
+
+enum LocationType {
+  POINT
+  AREA
+  BUILDING
+  SHELTER
+  CAMP
+  HOSPITAL
+  DEPOT
+  SCHOOL
+  BRIDGE
+  ROAD
+  OTHER
+}
+
+//
+// ============================================================
+// BUILDINGS
+// ============================================================
+//
+
+model Building {
+  id                 String   @id @default(uuid())
+  locationId         String
+
+  name               String
+  floors             Int?
+  capacity           Int?
+
+  officiallyDesignated Boolean @default(false)
+  accessibility       Boolean @default(false)
+
+  suitabilityScore    Float?
+
+  metadata            Json?
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([locationId])
+}
+
+//
+// ============================================================
+// INCIDENTS
+// ============================================================
+//
+
+model Incident {
+  id              String           @id @default(uuid())
+  locationId      String?
+
+  title           String
+  description     String?
+  incidentType    IncidentType
+
+  severity        Severity
+  priority        Priority
+
+  sourceState     SourceState
+  verification    VerificationStatus
+
+  confidence      Float?
+  reportedAt      DateTime
+  resolvedAt      DateTime?
+
+  metadata        Json?
+
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  location Location? @relation(fields: [locationId], references: [id])
+
+  communityReports CommunityReport[]
+  auditEvents      AuditEvent[]
+
+  @@index([incidentType])
+  @@index([severity])
+  @@index([priority])
+  @@index([reportedAt])
+}
+
+enum IncidentType {
+  FLOOD
+  MEDICAL
+  FIRE
+  TRAPPED
+  MISSING_PERSON
+  ROAD_BLOCKAGE
+  INFRASTRUCTURE_DAMAGE
+  STRUCTURAL_DANGER
+  LANDSLIDE
+  OTHER
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum Priority {
+  P0
+  P1
+  P2
+  P3
+}
+
+//
+// ============================================================
+// ALERTS / EARLY WARNING
+// ============================================================
+//
+
+model Alert {
+  id             String       @id @default(uuid())
+
+  title          String
+  message        String
+
+  hazardType     HazardType
+  severity       Severity
+
+  sourceState    SourceState
+  verification   VerificationStatus
+
+  sourceName     String?
+  sourceUrl      String?
+
+  affectedArea   Json?
+
+  issuedAt       DateTime
+  expiresAt      DateTime?
+
+  isActive       Boolean      @default(true)
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([hazardType])
+  @@index([severity])
+  @@index([isActive])
+  @@index([issuedAt])
+}
+
+enum HazardType {
+  FLOOD
+  CYCLONE
+  EARTHQUAKE
+  LANDSLIDE
+  FIRE
+  HEATWAVE
+  STORM
+  OTHER
+}
+
+//
+// ============================================================
+// HAZARD ZONES
+// ============================================================
+//
+
+model HazardZone {
+  id              String       @id @default(uuid())
+  locationId      String?
+
+  name            String
+  hazardType      HazardType
+  severity        Severity
+
+  polygon         Json?
+
+  sourceState     SourceState
+  verification    VerificationStatus
+
+  confidence      Float?
+
+  validFrom       DateTime
+  validUntil      DateTime?
+
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  location Location? @relation(fields: [locationId], references: [id])
+
+  @@index([hazardType])
+  @@index([severity])
+}
+
+//
+// ============================================================
+// SHELTERS / RELIEF CAMPS
+// ============================================================
+//
+
+model Shelter {
+  id                 String   @id @default(uuid())
+  locationId         String
+
+  name               String
+  capacity           Int
+  occupied           Int      @default(0)
+
+  officiallyDesignated Boolean @default(false)
+  accessibility       Boolean @default(false)
+
+  status              ShelterStatus @default(OPEN)
+
+  safetyScore         Float?
+
+  medicalSupport     Boolean @default(false)
+  waterAvailable     Boolean @default(false)
+  foodAvailable      Boolean @default(false)
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  resources Resource[]
+  needs     ReliefNeed[]
+
+  @@index([status])
+  @@index([locationId])
+}
+
+enum ShelterStatus {
+  OPEN
+  FULL
+  CLOSED
+  EVACUATING
+  UNKNOWN
+}
+
+//
+// ============================================================
+// RESOURCES
+// ============================================================
+//
+
+model Resource {
+  id          String       @id @default(uuid())
+  shelterId   String?
+
+  name        String
+  type        ResourceType
+
+  quantity    Float
+  unit        String
+
+  status      ResourceStatus @default(AVAILABLE)
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  shelter Shelter? @relation(fields: [shelterId], references: [id])
+
+  @@index([type])
+  @@index([status])
+}
+
+enum ResourceType {
+  WATER
+  FOOD
+  MEDICINE
+  BLANKET
+  CLOTHING
+  BABY_FOOD
+  SANITATION
+  TRANSPORT
+  POWER
+  MEDICAL_SUPPLIES
+  VOLUNTEERS
+  OTHER
+}
+
+enum ResourceStatus {
+  AVAILABLE
+  RESERVED
+  ALLOCATED
+  EXHAUSTED
+}
+
+//
+// ============================================================
+// RELIEF NEEDS
+// ============================================================
+//
+
+model ReliefNeed {
+  id          String       @id @default(uuid())
+  shelterId   String?
+
+  type        ResourceType
+  quantity    Float
+  unit        String
+
+  priority    Priority
+  status      NeedStatus @default(OPEN)
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  shelter Shelter? @relation(fields: [shelterId], references: [id])
+
+  matches ResourceMatch[]
+
+  @@index([type])
+  @@index([status])
+}
+
+enum NeedStatus {
+  OPEN
+  PARTIALLY_FILLED
+  FILLED
+  CANCELLED
+}
+
+//
+// ============================================================
+// RESOURCE OFFERS
+// ============================================================
+//
+
+model ResourceOffer {
+  id           String       @id @default(uuid())
+  userId       String
+  locationId   String?
+
+  type         ResourceType
+  quantity     Float
+  unit         String
+
+  description  String?
+  status       OfferStatus @default(AVAILABLE)
+
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location Location? @relation(fields: [locationId], references: [id])
+
+  matches ResourceMatch[]
+
+  @@index([userId])
+  @@index([type])
+  @@index([status])
+}
+
+enum OfferStatus {
+  AVAILABLE
+  RESERVED
+  ALLOCATED
+  EXPIRED
+}
+
+//
+// ============================================================
+// RESOURCE MATCHING
+// ============================================================
+
+model ResourceMatch {
+  id             String   @id @default(uuid())
+
+  needId         String
+  offerId        String
+
+  matchedQuantity Float
+  matchScore      Float?
+
+  status          MatchStatus @default(PROPOSED)
+
+  reasons         Json?
+
+  humanConfirmed  Boolean @default(false)
+  confirmedBy     String?
+  confirmedAt     DateTime?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  need  ReliefNeed    @relation(fields: [needId], references: [id], onDelete: Cascade)
+  offer ResourceOffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+}
+
+enum MatchStatus {
+  PROPOSED
+  HUMAN_REVIEW
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+//
+// ============================================================
+// SOS REQUESTS
+// ============================================================
+//
+
+model SOSRequest {
+  id                    String   @id @default(uuid())
+  userId                String
+
+  emergencyType         IncidentType
+  peopleAffected        Int      @default(1)
+
+  trapped               Boolean  @default(false)
+  medicalHelpRequired   Boolean  @default(false)
+
+  locationShared        Boolean  @default(false)
+  latitude              Float?
+  longitude             Float?
+
+  priority              Priority @default(P2)
+  status                SOSStatus @default(ACTIVE)
+
+  emergencyNote         String?
+
+  createdAt             DateTime @default(now())
+  acceptedAt            DateTime?
+  resolvedAt            DateTime?
+  updatedAt             DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  ambulanceAssignments AmbulanceAssignment[]
+
+  @@index([userId])
+  @@index([priority])
+  @@index([status])
+  @@index([createdAt])
+}
+
+enum SOSStatus {
+  ACTIVE
+  ACKNOWLEDGED
+  RESPONDER_REQUESTED
+  RESPONDER_ASSIGNED
+  EN_ROUTE
+  ARRIVED
+  RESOLVED
+  CANCELLED
+}
+
+//
+// ============================================================
+// AMBULANCE / RESPONSE SIMULATOR
+// ============================================================
+//
+
+model Ambulance {
+  id          String          @id @default(uuid())
+
+  name        String
+  status      AmbulanceStatus
+
+  latitude    Float?
+  longitude   Float?
+
+  simulated   Boolean         @default(true)
+
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  assignments AmbulanceAssignment[]
+
+  @@index([status])
+}
+
+model AmbulanceAssignment {
+  id            String   @id @default(uuid())
+
+  ambulanceId   String
+  sosRequestId  String
+
+  status        ResponseStatus
+
+  etaMinutes    Int?
+  assignedAt    DateTime @default(now())
+  arrivedAt     DateTime?
+  completedAt   DateTime?
+
+  ambulance  Ambulance  @relation(fields: [ambulanceId], references: [id])
+  sosRequest SOSRequest @relation(fields: [sosRequestId], references: [id], onDelete: Cascade)
+
+  @@index([ambulanceId])
+  @@index([sosRequestId])
+}
+
+enum AmbulanceStatus {
+  AVAILABLE
+  BUSY
+  OFFLINE
+  MAINTENANCE
+}
+
+enum ResponseStatus {
+  REQUESTED
+  ACCEPTED
+  EN_ROUTE
+  ARRIVED
+  COMPLETED
+  CANCELLED
+}
+
+//
+// ============================================================
+// COMMUNITY REPORTS
+// ============================================================
+//
+
+model CommunityReport {
+  id            String             @id @default(uuid())
+
+  userId        String
+  locationId    String?
+
+  incidentType  IncidentType
+
+  text          String
+  mediaUrl      String?
+
+  sourceState   SourceState        @default(COMMUNITY)
+  verification  VerificationStatus @default(UNVERIFIED)
+
+  confidence    Float?
+
+  reportedAt    DateTime           @default(now())
+  verifiedAt    DateTime?
+  verifiedBy    String?
+
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location Location? @relation(fields: [locationId], references: [id])
+
+  incidentId String?
+  incident   Incident? @relation(fields: [incidentId], references: [id])
+
+  @@index([userId])
+  @@index([incidentType])
+  @@index([verification])
+  @@index([reportedAt])
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum SourceState {
+  OFFICIAL
+  VERIFIED
+  COMMUNITY
+  AI_SIGNAL
+  STALE
+}
+
+//
+// ============================================================
+// DONATIONS
+// ============================================================
+//
+
+model Donation {
+  id          String       @id @default(uuid())
+  userId      String
+  locationId  String?
+
+  type        ResourceType
+  quantity    Float
+  unit        String
+
+  description String?
+  status      DonationStatus @default(OFFERED)
+
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  location Location? @relation(fields: [locationId], references: [id])
+
+  @@index([userId])
+  @@index([type])
+}
+
+enum DonationStatus {
+  OFFERED
+  ACCEPTED
+  ALLOCATED
+  COMPLETED
+  CANCELLED
+}
+
+//
+// ============================================================
+// AGENT WORKFLOWS
+// ============================================================
+//
+
+model AgentWorkflow {
+  id          String         @id @default(uuid())
+
+  eventId     String?
+  userId      String?
+
+  workflowType WorkflowType
+  status       WorkflowStatus @default(PENDING)
+
+  input       Json?
+  output      Json?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  executions AgentExecution[]
+
+  @@index([eventId])
+  @@index([userId])
+  @@index([status])
+}
+
+enum WorkflowType {
+  DISASTER_RESPONSE
+  SOS_RESPONSE
+  INCIDENT_ANALYSIS
+  ROUTE_RECOMMENDATION
+  RESOURCE_MATCHING
+  EARLY_WARNING
+}
+
+enum WorkflowStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  REVIEW_REQUIRED
+  BLOCKED
+}
+
+//
+// ============================================================
+// AGENT EXECUTION LOG
+// ============================================================
+//
+
+model AgentExecution {
+  id           String       @id @default(uuid())
+
+  workflowId   String
+  agentType    AgentType
+
+  status       AgentExecutionStatus
+
+  input        Json?
+  output       Json?
+
+  confidence   Float?
+
+  startedAt    DateTime     @default(now())
+  completedAt  DateTime?
+
+  errorMessage String?
+
+  workflow AgentWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@index([workflowId])
+  @@index([agentType])
+  @@index([status])
+}
+
+enum AgentType {
+  DATA_REFINEMENT
+  VALIDATION
+  MASTER
+  RISK
+  ROUTE
+  RESOURCE
+  RESPONSE
+  EVALUATION
+}
+
+enum AgentExecutionStatus {
+  QUEUED
+  RUNNING
+  SUCCESS
+  FAILED
+  REVIEW_REQUIRED
+}
+
+//
+// ============================================================
+// EVALUATION RESULT
+// ============================================================
+
+model EvaluationResult {
+  id          String   @id @default(uuid())
+  workflowId  String
+
+  status      EvaluationStatus
+
+  evidenceSupported      Boolean @default(false)
+  sourceVerified         Boolean @default(false)
+  confidenceAcceptable   Boolean @default(false)
+  dataFresh              Boolean @default(false)
+  outputsConsistent      Boolean @default(false)
+  safetyPolicyPassed     Boolean @default(false)
+  explainabilityPresent  Boolean @default(false)
+
+  humanReviewRequired    Boolean @default(false)
+
+  reasons     Json?
+  approvedOutputs Json?
+  blockedOutputs  Json?
+
+  createdAt   DateTime @default(now())
+
+  @@index([workflowId])
+  @@index([status])
+}
+
+enum EvaluationStatus {
+  APPROVED
+  APPROVED_WITH_REVIEW
+  BLOCKED
+}
+
+//
+// ============================================================
+// AUDIT EVENTS
+// ============================================================
+//
+
+model AuditEvent {
+  id          String   @id @default(uuid())
+
+  userId      String?
+  incidentId  String?
+
+  action      String
+  entityType  String
+  entityId    String?
+
+  metadata    Json?
+
+  createdAt   DateTime @default(now())
+
+  user     User?     @relation("UserAuditEvents", fields: [userId], references: [id])
+  incident Incident? @relation(fields: [incidentId], references: [id])
+
+  @@index([userId])
+  @@index([incidentId])
+  @@index([entityType])
+  @@index([createdAt])
 }
