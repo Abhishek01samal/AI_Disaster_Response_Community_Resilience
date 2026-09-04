@@ -60,7 +60,7 @@ export const sosResponseOrchestrator = inngest.createFunction(
             locationShared: sosRequest.locationConsent,
             latitude: sosRequest.location.lat,
             longitude: sosRequest.location.lng,
-            emergencyNote: sosRequest.emergencyNote,
+            emergencyNote: sosRequest.emergencyNote ?? null,
             status: "ACTIVE",
             priority: derivePriority(sosRequest),
           },
@@ -150,7 +150,7 @@ export const sosResponseOrchestrator = inngest.createFunction(
               ambulanceId: response.responder.responderId,
               sosRequestId: persisted.id,
               status: "REQUESTED",
-              etaMinutes: response.etaMinutes ?? undefined,
+              etaMinutes: response.etaMinutes ?? null,
             },
           });
           await prisma.ambulance.update({
