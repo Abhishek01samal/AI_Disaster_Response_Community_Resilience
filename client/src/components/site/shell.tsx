@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { Reveal } from "./motion";
 import { ChatWidget } from "./chat";
+import { logoutAction, type AuthUser } from "@/lib/auth";
 
 const NAV = [
   { to: "#console", label: "Console" },
@@ -40,7 +42,40 @@ function NavLink({ to, label }: { to: string; label: string }) {
   );
 }
 
-export function Header() {
+function UserMenu({ user }: { user: AuthUser | null }) {
+  const router = useRouter();
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  if (!user) return null;
+
+  async function handleLogout() {
+    setLoggingOut(true);
+    try {
+      await logoutAction();
+    } finally {
+      router.push("/auth/login");
+      router.refresh();
+    }
+  }
+
+  return (
+    <div className="hidden items-center gap-3 border-l border-border pl-4 sm:flex">
+      <span className="label-mono !text-foreground truncate max-w-[160px]" title={user.email}>
+        {user.name}
+      </span>
+      <button
+        type="button"
+        onClick={handleLogout}
+        disabled={loggingOut}
+        className="border border-border-strong px-2.5 py-1 font-mono text-[10px] tracking-[0.14em] uppercase transition-colors hover:bg-foreground hover:text-background disabled:opacity-50"
+      >
+        {loggingOut ? "…" : "Sign out"}
+      </button>
+    </div>
+  );
+}
+
+export function Header({ user }: { user?: AuthUser | null }) {
   return (
     <header className="sticky top-0 z-50 border-b border-border-strong bg-background/90 backdrop-blur">
       <div className="mx-auto flex h-12 max-w-[1600px] items-center gap-6 px-4 md:px-8">
@@ -66,6 +101,7 @@ export function Header() {
             <span className="label-mono !text-foreground">Live</span>
           </span>
           <Clock />
+          <UserMenu user={user ?? null} />
         </div>
       </div>
     </header>
@@ -131,10 +167,10 @@ export function Footer() {
   );
 }
 
-export function Page({ children }: { children: ReactNode }) {
+export function Page({ children, user }: { children: ReactNode; user?: AuthUser | null }) {
   return (
     <div className="min-h-screen bg-background">
-      <Header />
+      <Header user={user} />
       <Ticker
         items={[
           "RED WARNING — NADIPUR RIVER 8.42 M",
