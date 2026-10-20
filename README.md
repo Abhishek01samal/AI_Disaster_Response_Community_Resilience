@@ -26,7 +26,7 @@ Information states shown throughout: **OFFICIAL → VERIFIED → COMMUNITY → A
 
 ## Multi-Agent Architecture
 
-Five specialized decision-support workers sit behind the console. They never act autonomously — every output flows through a deterministic safety core (rules engine, PostGIS, RBAC, human approval) before becoming an action.
+Five specialized decision-support workers sit behind the console. They never act autonomously — every output flows through a deterministic safety core (rules engine, PostGIS, RBAC, human approval) before becoming an action and try to alert every one.
 
 ```
                     MASTER AGENT (Orchestrator)
